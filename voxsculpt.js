@@ -95,6 +95,7 @@ function start() {
         initUI();
         
         canvas.onmousedown = handleMouseDown;
+        canvas.oncontextmenu = handleRightClick;
         document.onmouseup = handleMouseUp;
         document.onmousemove = handleMouseMove;
         
@@ -636,8 +637,11 @@ function handleMouseDown(event) {
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
     
+    var rightclick;
+    if (event.which) rightclick = (event.which == 3);
+    else if (event.button) rightclick = (event.button == 2);
     
-    if( !event.altKey )
+    if( !rightclick )
     {
         var nX = ( (lastMouseX / window.innerWidth) ) * 2.0 - 1.0;
         var nY = 1.0 - ( lastMouseY / ( window.innerHeight ) ) * 2.0;
@@ -658,8 +662,11 @@ function handleMouseMove(event) {
     var newX = event.clientX;
     var newY = event.clientY;
     
+    var rightclick;
+    if (event.which) rightclick = (event.which == 3);
+    else if (event.button) rightclick = (event.button == 2);
     
-    if( event.altKey )
+    if( rightclick )
     {
         var deltaX = newX - lastMouseX;
         var deltaY = newY - lastMouseY;
@@ -692,6 +699,11 @@ function handleMouseMove(event) {
 
     lastMouseX = newX;
     lastMouseY = newY;
+}
+
+function handleRightClick(event) {
+    event.preventDefault();
+    return false;
 }
 
 function setupSculpt(nX, nY) {
