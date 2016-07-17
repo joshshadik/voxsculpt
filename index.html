@@ -105,13 +105,29 @@
 
         uniform sampler2D uVoxTex;
         uniform highp vec3 uSculptDir;
+        uniform highp vec3 uLastDir;
         uniform highp vec3 uSculptPos;
+        uniform highp vec3 uLastPos;
 
         uniform highp float uRadius;
         uniform highp float uDeltaTime;
         
         highp float rand(highp vec2 co){
             return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+        }
+        
+        highp vec3 closestPoint( highp vec3 a, highp vec3 b, highp vec3 p )
+        {
+            highp vec3 ap = p - a;
+            highp vec3 ab = b - a;
+            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
+            highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
+            highp float t = ap_ab / ab2;
+            
+            if( t < 0.0 ) t = 0.0;
+            else if ( t > 1.0 ) t = 1.0;
+            
+            return a + ab * t;
         }
 
         void main(void) {
@@ -135,11 +151,16 @@
            
             //vox.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / 32.0 ;
                         
+            
             highp vec3 cubeOff = ( pos - uSculptPos );
+            highp vec3 cubeOffN = normalize( cubeOff );
             
-            highp vec3 sculptDir = normalize(uSculptDir );
+            highp vec3 fixedDir = closestPoint( normalize( uLastDir ), normalize( uSculptDir ), cubeOffN );
             
-            highp float cosAng = dot( normalize( cubeOff ), sculptDir );
+            
+            highp vec3 sculptDir = normalize(fixedDir );
+            
+            highp float cosAng = dot( cubeOffN, sculptDir );
             
             highp float offLength = length( cubeOff );
 
@@ -344,8 +365,10 @@
         <canvas id="glcanvas" width="1200" height="480" style="width:100%;height:100%;cursor:crosshair;">
             Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
         </canvas>
-        <div id="overlay">            
-            <div><input id="fileItem" type="file"></div>
+        <div id="overlay">                       
+            <div>Left click to carve</div>
+            <div>Right click to rotate</div>
+            <div>Load Voxel Data from Image <input id="fileItem" type="file"></div>
         </div>
     </div>
 

@@ -43,6 +43,11 @@ class Material {
         this.vec3Attributes[vecName] = vecValue;
     }
     
+    getVec3( vecName )
+    {
+        return this.vec3Attributes[vecName];
+    }
+    
     setShader(shaderProgram )
     {
         this.shaderProgram = shaderProgram;
@@ -88,6 +93,7 @@ class Material {
         
         for( var attName in this.vec3Attributes )
         {
+
             gl.uniform3fv( gl.getUniformLocation( this.shaderProgram, attName ), this.vec3Attributes[attName]) ;
         }
         

@@ -33,7 +33,8 @@ var particleCount = 1000;
 
 var timeScale = 1.0;
 
-var mouseDown = false;
+var leftDown = false;
+var rightDown = false;
 var lastMouseX = null;
 var lastMouseY = null;
 
@@ -95,6 +96,7 @@ function start() {
         initUI();
         
         canvas.onmousedown = handleMouseDown;
+        canvas.oncontextmenu = handleRightClick;
         document.onmouseup = handleMouseUp;
         document.onmousemove = handleMouseMove;
         
@@ -479,7 +481,7 @@ function renderParticleData(deltaTime)
 //
 function render( deltaTime ) 
 { 
-    if( mouseDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
+    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
     {
         renderParticleData( deltaTime );
         lastActionTime = lastUpdateTime;
@@ -541,6 +543,7 @@ function tick( currentTime )
     
     render( deltaTime );
     
+    toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
     
     requestAnimationFrame( tick );
 }
@@ -632,34 +635,56 @@ function cross(vecA, vecB ) {
 }
 
 function handleMouseDown(event) {
-    mouseDown = true;
+    
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
+        
+    var rightclick;
+    if (event.which) rightclick = (event.which == 3);
+    else if (event.button) rightclick = (event.button == 2);
     
-    
-    if( !event.altKey )
+    if( !rightclick )
     {
         var nX = ( (lastMouseX / window.innerWidth) ) * 2.0 - 1.0;
         var nY = 1.0 - ( lastMouseY / ( window.innerHeight ) ) * 2.0;
         
         setupSculpt(nX, nY );
         lastActionTime = 0.0;
+        
+        toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
+        
+        leftDown = true;
+    }
+    else
+    {
+        rightDown = true;
     }
 }
 
 function handleMouseUp(event) {
-    mouseDown = false;
+    var rightclick;
+    if (event.which) rightclick = (event.which == 3);
+    else if (event.button) rightclick = (event.button == 2);
+    
+    if( !rightclick )
+    {
+        leftDown = false;
+    }
+    else
+    {
+        rightDown = false;
+    }
 }
 
 function handleMouseMove(event) {
-    if (!mouseDown) {
+    if (!( leftDown || rightDown )) {
         return;
     }
     var newX = event.clientX;
     var newY = event.clientY;
+
     
-    
-    if( event.altKey )
+    if( rightDown )
     {
         var deltaX = newX - lastMouseX;
         var deltaY = newY - lastMouseY;
@@ -681,7 +706,8 @@ function handleMouseMove(event) {
         vec3.normalize(cameraUp, cameraUp );
         //console.log("camera forward: " + cameraForward + "     right: " + cameraRight + "  up: " + cameraUp );
     }
-    else
+    
+    if( leftDown)
     {
         var nX = ( newX / window.innerWidth) * 2.0 - 1.0;
         var nY = 1.0 - ( newY / window.innerHeight ) * 2.0;
@@ -694,13 +720,20 @@ function handleMouseMove(event) {
     lastMouseY = newY;
 }
 
+function handleRightClick(event) {
+    event.preventDefault();
+    return false;
+}
+
+var sculptRay = [];  
+    
 function setupSculpt(nX, nY) {
         
     var mouseCoord = vec4.fromValues( nX, nY, -1.0, 1.0);        
     var invMat = [];
+    
             
-    mat4.invert(invMat, perspectiveMatrix );       
-    var sculptRay = [];       
+    mat4.invert(invMat, perspectiveMatrix );            
     mat4.multiply(sculptRay, invMat, mouseCoord );
     
 
