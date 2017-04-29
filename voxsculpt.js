@@ -60,6 +60,8 @@ const RT_TEX_SIZE = 512;
 
 const SCULPT_SIZE = 64;
 
+const SCULPT_LAYERS = 8;
+
 // Maximum number of cubes in a buffer
 // for 36 tri indices in 16-bit array : 1820*36 < 2^16
 const MAX_PER_BUFFER = 1820;
@@ -286,18 +288,27 @@ function initParticleData()
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
     toolDataMaterial.setFloat("uRadius", 3.0 );
+    toolDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
+    toolDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
+    toolDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
     
     
     // material to copy 1 texture into another
     copyMaterial = new Material(quadVS, copyFS);   
     copyMaterial.setTexture("uCopyTex", rtCopyTexture );
     copyMaterial.addVertexAttribute("aVertexPosition");
+    copyMaterial.setFloat("cubeSize", SCULPT_SIZE);
+    copyMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
+    copyMaterial.setFloat("imageSize", RT_TEX_SIZE);
     
     
     // initialize data into vox texture
     var initPosFS = getShader(gl, "initdata-fs");
     var initDataMaterial = new Material( quadVS, initPosFS );
     initDataMaterial.addVertexAttribute("aVertexPosition");
+    initDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
+    initDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
+    initDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
     
     gl.viewport(0, 0, RT_TEX_SIZE, RT_TEX_SIZE);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -326,7 +337,7 @@ function initMaterials()
 
     particleMaterials[0] = new Material( basicVS, voxelFS );
     
-
+    
     
     mat4.perspective(perspectiveMatrix, 45, canvas.width/canvas.height, 0.1, 1000.0);
     
@@ -344,6 +355,9 @@ function initMaterials()
         particleMaterials[i].setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
         particleMaterials[i].setMatrix("uMVMatrix", new Float32Array( mvMatrix ) );
         particleMaterials[i].setMatrix("uNormalMatrix", new Float32Array( normalMatrix ) );
+        particleMaterials[i].setFloat("cubeSize", SCULPT_SIZE);
+        particleMaterials[i].setFloat("layersPerRow", SCULPT_LAYERS);
+        particleMaterials[i].setFloat("imageSize", RT_TEX_SIZE);
     }
 }
 
