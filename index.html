@@ -13,6 +13,7 @@
 
     <script id="cubeframe-fs" type="x-shader/x-fragment">
         varying highp vec3 vObjNormal;
+        varying highp vec3 vColor;
 
         void main(void) {
             highp vec4 texelColor;
@@ -23,7 +24,7 @@
             
             if(onEdgeX && onEdgeZ || onEdgeX && onEdgeY || onEdgeY && onEdgeZ )
             {
-                texelColor.rgb = vec3(0.0);
+                texelColor.rgb = vColor;
                 texelColor.a = 1.0;
             }
             else
@@ -49,6 +50,7 @@
         }
     </script>
     
+    
     <script id="voxel-fs" type="x-shader/x-fragment">
         varying highp vec3 vObjNormal;
         varying highp vec3 vColor;
@@ -57,6 +59,55 @@
             gl_FragColor = vec4( vColor, 1.0);
         }
     </script>
+
+    <script id="position-fs" type="x-shader/x-fragment">
+        varying highp vec3 vPosition;
+        varying highp vec2 vUV;
+
+        uniform highp float cubeSize;
+
+        void main(void) {
+            highp vec4 color;
+            color.xyz = vPosition / 256.0;
+            //color.xyz -= 1.0;
+            color.a = 1.0;
+            gl_FragColor = color;
+        }
+
+    </script>
+
+    <script id="compose-fs" type="x-shader/x-fragment">
+        uniform sampler2D uVoxTex;
+        uniform sampler2D uPosTex;
+        uniform highp float cubeSize;       // 64.0
+        uniform highp float layersPerRow;   // 8
+        uniform highp float imageSize;      // 512
+
+        varying highp vec2 vTextureCoord;
+
+        void main(void) 
+        {
+            highp vec4 cubePos = texture2D(uPosTex, vTextureCoord.st);
+
+            highp vec4 color = cubePos;
+
+            if( cubePos.a > 0.0 )
+            {
+                cubePos.xyz = cubePos.xyz * ( 256.0);
+
+                highp vec2 uv = vec2( mod( cubePos.x, cubeSize ),  mod( floor(cubePos.y), cubeSize )) + vec2( floor( mod(cubePos.z, layersPerRow) ), floor(cubePos.z / layersPerRow) ) * cubeSize;
+                uv /= imageSize; 
+
+                //color = vec4( uv, 0.0, 1.0);
+                color =  texture2D(uVoxTex, uv);
+            }
+            
+                         
+
+            gl_FragColor = color;
+        }
+
+    </script>
     
     
     
@@ -64,7 +115,8 @@
         attribute highp vec3 aVertexPosition;
 
         uniform highp mat4 uNormalMatrix;
-        uniform highp mat4 uMVMatrix;
+        uniform highp mat4 uMMatrix;
+        uniform highp mat4 uVMatrix;
         uniform highp mat4 uPMatrix;
         uniform sampler2D uVoxTex;
 
@@ -74,6 +126,8 @@
 
         varying highp vec3 vObjNormal;
         varying highp vec3 vColor;
+        varying highp vec3 vPosition;
+        varying highp vec2 vUV;
 
         void main(void) {
 
@@ -86,6 +140,9 @@
             highp vec3 offset = aVertexPosition - cubePos * 2.0;          
                         
             highp vec3 pos = offset + cubePos - vec3(cubeSize * 0.5 );
+
+            vPosition = cubePos;
+            vUV = uv;
             
             if( col.a <= 0.5 )
             {
@@ -93,7 +150,7 @@
             }
             else
             {
-                gl_Position = uPMatrix * uMVMatrix * vec4(pos, 1.0);
+                gl_Position = uPMatrix * uVMatrix * vec4(pos, 1.0);
             }
 
             highp vec3 objNormal = normalize(aVertexPosition - cubePos * 2.0);
@@ -102,6 +159,80 @@
             
             vColor = col.rgb;
         }
+    </script>
+
+    <script id="sculpt2-fs" type="x-shader/x-fragment">
+        uniform sampler2D uVoxTex;
+        uniform sampler2D uPosTex;
+
+        uniform highp mat4 uVMatrix;
+        uniform highp mat4 uPMatrix;
+
+        uniform highp vec3 uSculptDir;
+        uniform highp vec3 uSculptPos;
+        uniform highp vec3 uLastPos;
+
+        uniform highp float uRadius;
+        uniform highp float uDeltaTime;
+
+        uniform highp float cubeSize;       // 64.0
+        uniform highp float layersPerRow;   // 8
+        uniform highp float imageSize;      // 512
+
+        varying highp vec2 vTextureCoord;
+
+        void main(void) 
+        {
+            highp float spacing = 1.0/layersPerRow;
+            
+            highp vec3 cubePos;        
+            cubePos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
+            cubePos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
+            cubePos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
+
+   
+            cubePos.xy *= cubeSize;
+            
+            //vox.rgb = pos.xyz / 64.0;
+                        
+            cubePos.xyz -= vec3(cubeSize*0.5);
+
+            highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
+
+            scrPos.xyz /= scrPos.w; 
+            highp vec4 smplPos = texture2D(uPosTex, scrPos.xy * 0.5 + 0.5) * 256.0;
+            
+            highp vec4 vox = texture2D(uVoxTex, vTextureCoord);
+
+            cubePos.xyz += vec3(cubeSize*0.5);
+
+            if( smplPos.a > 0.0 )
+            {
+                highp vec3 difference = cubePos.xyz - smplPos.xyz;
+                if( length(scrPos.xy - vec2(0.0)) < uRadius && abs( length( smplPos.xyz - cubePos.xyz ) ) <= 1.0 )
+                {
+                    vox.rgb = smplPos.xyz / 64.0;
+                    vox.a = 0.0;
+                }
+
+                else
+                {
+                    vox.rgb = abs( cubePos.xyz - smplPos.xyz ) / 64.0;
+                }
+            }
+            else
+            {
+                vox.rgb = vec3(1.0, 0.0, 0.0);
+            }
+
+            gl_FragColor = vox; //vec4(cubePos, 1.0);
+        }
+    </script>
+
+    
+    <script id="paint2-fs" type="x-shader/x-fragment">
+
+
     </script>
     
     <script id="sculpt-fs" type="x-shader/x-fragment">
@@ -221,8 +352,9 @@
             gl_FragColor = vox;
         }
     </script>   
+
     
-        <script id="paint-fs" type="x-shader/x-fragment">
+    <script id="paint-fs" type="x-shader/x-fragment">
         varying highp vec2 vTextureCoord;
 
         uniform sampler2D uVoxTex;

@@ -6,8 +6,8 @@ var cubeVerticesIndexBuffer;
 
 var bufferCount;
 
-var particleMaterials = [];
-var particleMaterialIndex = 0;
+var voxelMaterials = [];
+var voxelMaterialIndex = 0;
 
 var frameVerticesBuffer;
 var frameIndexBuffer;
@@ -15,15 +15,19 @@ var frameIndexBuffer;
 // Using multiple framebuffers since can't use multiple color attachments without extensions or webgl2
 var rtVoxBuffer;
 var rtCopyBuffer;
+var rtScrPosBuffer;
 
 var rtVoxTexture;
 var rtCopyTexture;
+var rtScrPosTexture;
+var rtScrDepthTexture;
 
 var sculptDataProgram;
 var rtCopyProgram;
 
 var toolDataMaterial;
 var copyMaterial;
+var composeMaterial;
 
 var toolShaders = [];
 
@@ -39,7 +43,7 @@ var lastMouseX = null;
 var lastMouseY = null;
 
 var perspectiveMatrix = [];
-var mvMatrix = [];
+var vMatrix = [];
 
 var cameraPosition = [];
 var cameraRotation = [];
@@ -54,8 +58,8 @@ var lastActionTime = 0.0;
 var actionUsed = false;
 
 
-// support for up to RT_TEX_SIZE * RT_TEX_SIZE number of particles
-// 128x128 = 16384 particles
+// support for up to RT_TEX_SIZE * RT_TEX_SIZE number of voxels
+// 512x512 = 64x64x64 = 262,114 voxels
 const RT_TEX_SIZE = 512;
 
 const SCULPT_SIZE = 64;
@@ -212,7 +216,11 @@ function initBuffers()
 //
 function initParticleData() 
 {
-  
+    var extensions = gl.getSupportedExtensions();
+
+    console.log(extensions);
+
+    gl.getExtension('WEBGL_depth_texture');
 
     var texelData = gl.UNSIGNED_BYTE;
  
@@ -246,7 +254,32 @@ function initParticleData()
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, RT_TEX_SIZE, RT_TEX_SIZE, 0, gl.RGBA, texelData, null);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtCopyTexture, 0);
-  
+
+
+    rtScrPosBuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
+
+    rtScrPosBuffer.width = canvas.width;
+    rtScrPosBuffer.height = canvas.height;
+
+    rtScrPosTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, rtScrPosTexture );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtScrPosTexture, 0);
+
+    rtScrDepthTexture = gl.createTexture();
+    gl.bindTexture( gl.TEXTURE_2D, rtScrDepthTexture );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
+
 
     // create buffers for rendering images on quads
     frameVerticesBuffer = gl.createBuffer();
@@ -263,9 +296,10 @@ function initParticleData()
     
     // setup data materials
     var quadVS = getShader(gl, "screenquad-vs");
-    var sculptFS = getShader(gl, "sculpt-fs");
+    var sculptFS = getShader(gl, "sculpt2-fs");
     var copyFS = getShader(gl, "copy-fs");       
     var paintFS = getShader(gl, "paint-fs" );
+    var composeFS = getShader(gl, "compose-fs");
     
     toolShaders.length = 2;
     
@@ -284,13 +318,16 @@ function initParticleData()
     toolDataMaterial = new Material(null, null);   
     toolDataMaterial.setShader(toolShaders[0]);
     toolDataMaterial.setTexture("uVoxTex", rtVoxTexture );
+    toolDataMaterial.setTexture("uPosTex", rtScrPosTexture);
     toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
-    toolDataMaterial.setFloat("uRadius", 3.0 );
+    toolDataMaterial.setFloat("uRadius", 0.2 );
     toolDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
     toolDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
     toolDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
+    
+    
     
     
     // material to copy 1 texture into another
@@ -300,7 +337,16 @@ function initParticleData()
     copyMaterial.setFloat("cubeSize", SCULPT_SIZE);
     copyMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
     copyMaterial.setFloat("imageSize", RT_TEX_SIZE);
-    
+
+
+    composeMaterial = new Material(quadVS, composeFS);
+    composeMaterial.setTexture("uVoxTexture", rtVoxTexture);
+    composeMaterial.setTexture("uPosTex", rtScrPosTexture);
+    composeMaterial.addVertexAttribute("aVertexPosition");
+    composeMaterial.setFloat("cubeSize", SCULPT_SIZE);
+    composeMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
+    composeMaterial.setFloat("imageSize", RT_TEX_SIZE);
+
     
     // initialize data into vox texture
     var initPosFS = getShader(gl, "initdata-fs");
@@ -315,7 +361,7 @@ function initParticleData()
     
     renderDataBuffer( rtVoxBuffer, initDataMaterial );
     
-    renderDataBuffer( rtVoxBuffer, toolDataMaterial );
+    //renderDataBuffer( rtVoxBuffer, toolDataMaterial );
     
     gl.bindFramebuffer( gl.FRAMEBUFFER, null ); 
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -328,14 +374,15 @@ function initParticleData()
 //
 function initMaterials() 
 {
-    particleMaterials.length = 1;
+    voxelMaterials.length = 1;
         
     
-    var basicVS = getShader(gl, "basic-vs" );
-   
+    var basicVS = getShader(gl, "basic-vs" );  
     var voxelFS = getShader(gl, "voxel-fs" );
+    var wireframeFS = getShader(gl, "cubeframe-fs");
+    var positionFS = getShader(gl, "position-fs");
 
-    particleMaterials[0] = new Material( basicVS, voxelFS );
+    voxelMaterials[0] = new Material( basicVS, positionFS );
     
     
     
@@ -345,20 +392,23 @@ function initMaterials()
     cameraRotation = quat.create();
     cameraUp = vec3.fromValues(0.0, 1.0, 0.0 );
     
-    mat4.fromRotationTranslation( mvMatrix, cameraRotation, cameraPosition );
+    mat4.fromRotationTranslation( vMatrix, cameraRotation, cameraPosition );
     
 
-    for( var i=0; i < particleMaterials.length; i++ )
+    for( var i=0; i < voxelMaterials.length; i++ )
     {
-        particleMaterials[i].setTexture("uVoxTex", rtVoxTexture );
-        particleMaterials[i].addVertexAttribute("aVertexPosition");
-        particleMaterials[i].setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
-        particleMaterials[i].setMatrix("uMVMatrix", new Float32Array( mvMatrix ) );
-        particleMaterials[i].setMatrix("uNormalMatrix", new Float32Array( normalMatrix ) );
-        particleMaterials[i].setFloat("cubeSize", SCULPT_SIZE);
-        particleMaterials[i].setFloat("layersPerRow", SCULPT_LAYERS);
-        particleMaterials[i].setFloat("imageSize", RT_TEX_SIZE);
+        voxelMaterials[i].setTexture("uVoxTex", rtVoxTexture );
+        voxelMaterials[i].addVertexAttribute("aVertexPosition");
+        voxelMaterials[i].setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
+        voxelMaterials[i].setMatrix("uVMatrix", new Float32Array( vMatrix ) );
+        voxelMaterials[i].setMatrix("uNormalMatrix", new Float32Array( normalMatrix ) );
+        voxelMaterials[i].setFloat("cubeSize", SCULPT_SIZE);
+        voxelMaterials[i].setFloat("layersPerRow", SCULPT_LAYERS);
+        voxelMaterials[i].setFloat("imageSize", RT_TEX_SIZE);
     }
+
+    toolDataMaterial.setMatrix("uVMatrix", new Float32Array( vMatrix ) );
+    toolDataMaterial.setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
 }
 
 //
@@ -407,14 +457,14 @@ function handleTextureLoaded(image, texture) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.bindTexture(gl.TEXTURE_2D, null);
   
-    blit(texture, rtVoxBuffer );
+    blit(texture, rtVoxBuffer, RT_TEX_SIZE, RT_TEX_SIZE );
 }
 
 
 
-function blit( texture, renderBuffer )
+function blit( texture, renderBuffer, viewWidth, viewHeight )
 {
-    gl.viewport(0, 0, RT_TEX_SIZE, RT_TEX_SIZE);
+    gl.viewport(0, 0, viewWidth, viewHeight);
     gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);  
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
@@ -495,17 +545,14 @@ function renderParticleData(deltaTime)
 //
 function render( deltaTime ) 
 { 
-    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
-    {
-        renderParticleData( deltaTime );
-        lastActionTime = lastUpdateTime;
-    }
-  
-    gl.clearColor( 1.0, 1.0, 1.0, 1.0 );
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    gl.bindFramebuffer( gl.FRAMEBUFFER, rtScrPosBuffer );
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    gl.clearColor( 1.0, 1.0, 1.0, 0.0 );
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
  
-    particleMaterials[particleMaterialIndex].apply();
+    voxelMaterials[voxelMaterialIndex].apply();
 
     for( var b=0; b < bufferCount; b++ )
     {
@@ -516,7 +563,7 @@ function render( deltaTime )
     
         // Bind all cube vertices
         gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesBuffers[b]);
-        gl.vertexAttribPointer(particleMaterials[particleMaterialIndex].getVertexAttribute("aVertexPosition"), 3, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribPointer(voxelMaterials[voxelMaterialIndex].getVertexAttribute("aVertexPosition"), 3, gl.FLOAT, false, 0, 0);
 
     
         var elementCount = Math.min( particleCount - b * MAX_PER_BUFFER, MAX_PER_BUFFER );
@@ -525,6 +572,27 @@ function render( deltaTime )
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
         gl.drawElements(gl.TRIANGLES, 36 * elementCount, gl.UNSIGNED_SHORT, 0);
     }
+
+    //blit( rtScrPosTexture, null, canvas.width, canvas.height);
+
+    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
+    {
+        renderParticleData( deltaTime );
+        lastActionTime = lastUpdateTime;
+    }
+  
+
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);  
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
+    
+    gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+    gl.clear( gl.COLOR_BUFFER_BIT );
+  
+    composeMaterial.apply();
+    
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
 }
 
 // 
@@ -551,9 +619,10 @@ function tick( currentTime )
     
     resize();
     
-    mat4.fromRotationTranslation( mvMatrix, cameraRotation, cameraPosition );
+    mat4.fromRotationTranslation( vMatrix, cameraRotation, cameraPosition );
     
-    particleMaterials[particleMaterialIndex].setMatrix("uMVMatrix", mvMatrix );
+    voxelMaterials[voxelMaterialIndex].setMatrix("uVMatrix", vMatrix );
+    toolDataMaterial.setMatrix("uVMatrix", vMatrix );
     
     render( deltaTime );
     
@@ -628,10 +697,12 @@ function resize()
 
      mat4.perspective(perspectiveMatrix, 45, canvas.width/canvas.height, 0.1, 1000.0);
     
-    for( var i=0; i < particleMaterials.length; i++ )
+    for( var i=0; i < voxelMaterials.length; i++ )
     {
-        particleMaterials[i].setMatrix("uPMatrix", perspectiveMatrix );
+        voxelMaterials[i].setMatrix("uPMatrix", perspectiveMatrix );
     }
+
+    toolDataMaterial.setMatrix("uPMatrix", perspectiveMatrix );
     
     // Set the viewport to match
     gl.viewport(0, 0, canvas.width,canvas.height);
@@ -746,12 +817,15 @@ function setupSculpt(nX, nY) {
     var mouseCoord = vec4.fromValues( nX, nY, -1.0, 1.0);        
     var invMat = [];
     
-            
+    var vpMat = [];
+
+    mat4.multiply(vpMat, perspectiveMatrix, vMatrix);
+
     mat4.invert(invMat, perspectiveMatrix );            
     mat4.multiply(sculptRay, invMat, mouseCoord );
     
 
-    mat4.invert( invMat, mvMatrix );       
+    mat4.invert( invMat, vMatrix );       
     sculptRay[3] = 0.0;       
     mat4.multiply(sculptRay, invMat, sculptRay);
     
@@ -762,28 +836,30 @@ function setupSculpt(nX, nY) {
     mat4.multiply( sculptPos, invMat, vec4.fromValues( -cameraPosition[0], -cameraPosition[1], -cameraPosition[2], 0.0 ) );
     
 
+    console.log(invMat);
     toolDataMaterial.setVec3("uSculptDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
-    toolDataMaterial.setVec3("uSculptPos", [sculptPos[0], sculptPos[1], sculptPos[2]] );
+    //toolDataMaterial.setVec3("uSculptPos", [sculptPos[0], sculptPos[1], sculptPos[2]] );
+    toolDataMaterial.setVec3("uSculptPos", [ invMat[12], invMat[13], invMat[14]]);
     
 }
 
-var mvMatrixStack = [];
+var vMatrixStack = [];
 
 function mvPushMatrix(m) {
   if (m) {
-    mvMatrixStack.push(m.dup());
-    mvMatrix = m.dup();
+    vMatrixStack.push(m.dup());
+    vMatrix = m.dup();
   } else {
-    mvMatrixStack.push(mvMatrix.dup());
+    vMatrixStack.push(vMatrix.dup());
   }
 }
 
 function mvPopMatrix() {
-  if (!mvMatrixStack.length) {
+  if (!vMatrixStack.length) {
     throw("Can't pop from an empty matrix stack.");
   }
-  mvMatrix = mvMatrixStack.pop();
-  return mvMatrix;
+  vMatrix = vMatrixStack.pop();
+  return vMatrix;
 }
 
 var vertices = [
