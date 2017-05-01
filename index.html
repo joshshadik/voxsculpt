@@ -15,6 +15,11 @@
         varying highp vec3 vObjNormal;
         varying highp vec3 vColor;
 
+        varying highp vec3 vPosition;
+        varying highp vec2 vUV;
+
+        uniform highp float cubeSize;
+
         void main(void) {
             highp vec4 texelColor;
                       
@@ -24,7 +29,7 @@
             
             if(onEdgeX && onEdgeZ || onEdgeX && onEdgeY || onEdgeY && onEdgeZ )
             {
-                texelColor.rgb = vColor;
+                texelColor.rgb = vPosition / 256.0;
                 texelColor.a = 1.0;
             }
             else
@@ -91,6 +96,7 @@
 
             highp vec4 color = cubePos;
 
+
             if( cubePos.a > 0.0 )
             {
                 cubePos.xyz = cubePos.xyz * ( 256.0);
@@ -102,7 +108,7 @@
                 color =  texture2D(uVoxTex, uv);
             }
             
-                         
+            //color = ( color * 256.0 ) / 64.0;
 
             gl_FragColor = color;
         }
@@ -172,6 +178,9 @@
         uniform highp vec3 uSculptPos;
         uniform highp vec3 uLastPos;
 
+        uniform highp vec3 uMousePos;
+        uniform highp vec3 uCamPos;
+
         uniform highp float uRadius;
         uniform highp float uDeltaTime;
 
@@ -181,6 +190,20 @@
 
         varying highp vec2 vTextureCoord;
 
+        highp vec2 closestPoint( highp vec2 a, highp vec2 b, highp vec2 p )
+        {
+            highp vec2 ap = p - a;
+            highp vec2 ab = b - a;
+            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
+            highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
+            highp float t = ap_ab / ab2;
+            
+            if( t < 0.0 ) t = 0.0;
+            else if ( t > 1.0 ) t = 1.0;
+            
+            return a + ab * t;
+        }
+
         void main(void) 
         {
             highp float spacing = 1.0/layersPerRow;
@@ -188,42 +211,68 @@
             highp vec3 cubePos;        
             cubePos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
             cubePos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
-            cubePos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
+            cubePos.z = floor( vTextureCoord.x * layersPerRow ) + floor( vTextureCoord.y * layersPerRow ) * layersPerRow;   
 
    
             cubePos.xy *= cubeSize;
+
+            cubePos.xyz = floor(cubePos.xyz);
             
             //vox.rgb = pos.xyz / 64.0;
                         
             cubePos.xyz -= vec3(cubeSize*0.5);
 
+            //cubePos.xyz += vec3(0.5);
+
             highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
 
+            //cubePos.xyz -= vec3(0.5);
+
             scrPos.xyz /= scrPos.w; 
-            highp vec4 smplPos = texture2D(uPosTex, scrPos.xy * 0.5 + 0.5) * 256.0;
+            scrPos.xy = scrPos.xy * 0.5 + 0.5;
+
+            scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
+            highp vec4 smplPos = texture2D(uPosTex, scrPos.xy);
+            smplPos = smplPos * 256.0;
+
+            smplPos.xyz = floor(smplPos.xyz);
             
             highp vec4 vox = texture2D(uVoxTex, vTextureCoord);
 
             cubePos.xyz += vec3(cubeSize*0.5);
 
-            if( smplPos.a > 0.0 )
-            {
-                highp vec3 difference = cubePos.xyz - smplPos.xyz;
-                if( length(scrPos.xy - vec2(0.0)) < uRadius && abs( length( smplPos.xyz - cubePos.xyz ) ) <= 1.0 )
-                {
-                    vox.rgb = smplPos.xyz / 64.0;
-                    vox.a = 0.0;
-                }
+            cubePos.xyz = floor(cubePos.xyz);
 
-                else
-                {
-                    vox.rgb = abs( cubePos.xyz - smplPos.xyz ) / 64.0;
-                }
-            }
-            else
+            //if( smplPos.a > 0.0 )
             {
-                vox.rgb = vec3(1.0, 0.0, 0.0);
+                highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
+
+                if( length( scrPos.xy - linePoint.xy) < uRadius )
+                {
+                    highp float offset = length( cubePos.xyz - uCamPos.xyz ) - length( smplPos.xyz - uSculptPos.xyz);
+                    //if( length(abs(cubePos.xyz - smplPos.xyz) ) <= 1.5 )
+                    if( offset <= 2.0 )
+                    {
+                        vox.a = 0.0;
+                    }
+
+                    //vox.rgb = cubePos.xyz / 64.0;
+                    //vox.b = smplPos.z / 64.0;
+                }
+                // if( length(cubePos.xyz - centerPoint.xyz ) < uRadius )
+                // {
+                //     vox.rgb = vec3(1.0) - vox.rgb;
+                //     vox.a = 0.0;
+                // }
+                // else
+                // {
+                //     vox.rgb = floor(smplPos.rgb) / 64.0; //vec3( length( cubePos.xyz - smplPos.xyz ));
+                // }
+
             }
+
+            //vox.rgb = vec3(scrPos.xy, 0.0);
+            //vox.rgb = ( cubePos.rgb - smplPos.rgb ); // / 64.0;
 
             gl_FragColor = vox; //vec4(cubePos, 1.0);
         }

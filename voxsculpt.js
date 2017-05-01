@@ -16,11 +16,13 @@ var frameIndexBuffer;
 var rtVoxBuffer;
 var rtCopyBuffer;
 var rtScrPosBuffer;
+var rtShadowBuffer;
 
 var rtVoxTexture;
 var rtCopyTexture;
 var rtScrPosTexture;
 var rtScrDepthTexture;
+var rtShadowTexture;
 
 var sculptDataProgram;
 var rtCopyProgram;
@@ -281,6 +283,22 @@ function initParticleData()
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
 
 
+    rtShadowBuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
+    
+    rtShadowBuffer.width = RT_TEX_SIZE;
+    rtShadowBuffer.height = RT_TEX_SIZE;
+
+    rtShadowTexture = gl.createTexture();
+    gl.bindTexture( gl.TEXTURE_2D, rtShadowTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtShadowBuffer.width, rtShadowBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtShadowTexture, 0);
+
+
     // create buffers for rendering images on quads
     frameVerticesBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
@@ -322,7 +340,7 @@ function initParticleData()
     toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
-    toolDataMaterial.setFloat("uRadius", 0.2 );
+    toolDataMaterial.setFloat("uRadius", 0.1 );
     toolDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
     toolDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
     toolDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
@@ -538,6 +556,42 @@ function renderParticleData(deltaTime)
     gl.viewport(0, 0, canvas.width, canvas.height);
 }
 
+function renderShadows()
+{
+    var cameraView;
+    mat4.fromRotationTranslation( cameraView, cameraRotation, cameraPosition );    
+    
+    voxelMaterials[voxelMaterialIndex].setMatrix("uVMatrix", vMatrix );
+    toolDataMaterial.setMatrix("uVMatrix", vMatrix );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
+    gl.viewport( 0, 0, RT_TEX_SIZE, RT_TEX_SIZE);
+
+    gl.clearColor( 1.0, 1.0, 1.0, 0.0);
+    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+    voxelMaterials[voxelMaterialIndex].apply();
+
+    for( var b=0; b < bufferCount; b++ )
+    {
+        if( particleCount < b * MAX_PER_BUFFER )
+        {
+            break;
+        }
+    
+        // Bind all cube vertices
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeVerticesBuffers[b]);
+        gl.vertexAttribPointer(voxelMaterials[voxelMaterialIndex].getVertexAttribute("aVertexPosition"), 3, gl.FLOAT, false, 0, 0);
+
+    
+        var elementCount = Math.min( particleCount - b * MAX_PER_BUFFER, MAX_PER_BUFFER );
+    
+        // Draw the cubes.
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVerticesIndexBuffer);
+        gl.drawElements(gl.TRIANGLES, 36 * elementCount, gl.UNSIGNED_SHORT, 0);
+    }
+
+}
+
 //
 // render
 //
@@ -545,6 +599,8 @@ function renderParticleData(deltaTime)
 //
 function render( deltaTime ) 
 { 
+
+    
 
     gl.bindFramebuffer( gl.FRAMEBUFFER, rtScrPosBuffer );
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -575,7 +631,7 @@ function render( deltaTime )
 
     //blit( rtScrPosTexture, null, canvas.width, canvas.height);
 
-    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
+    //if( leftDown ) // && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
     {
         renderParticleData( deltaTime );
         lastActionTime = lastUpdateTime;
@@ -627,7 +683,7 @@ function tick( currentTime )
     render( deltaTime );
     
     toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
-    
+    toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
     requestAnimationFrame( tick );
 }
 
@@ -737,7 +793,7 @@ function handleMouseDown(event) {
         lastActionTime = 0.0;
         
         toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
-        
+        toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
         leftDown = true;
     }
     else
@@ -811,10 +867,11 @@ function handleRightClick(event) {
 }
 
 var sculptRay = [];  
+var mouseCoord = [];
     
 function setupSculpt(nX, nY) {
         
-    var mouseCoord = vec4.fromValues( nX, nY, -1.0, 1.0);        
+    mouseCoord = vec4.fromValues( nX, nY, -1.0, 1.0);        
     var invMat = [];
     
     var vpMat = [];
@@ -836,11 +893,10 @@ function setupSculpt(nX, nY) {
     mat4.multiply( sculptPos, invMat, vec4.fromValues( -cameraPosition[0], -cameraPosition[1], -cameraPosition[2], 0.0 ) );
     
 
-    console.log(invMat);
     toolDataMaterial.setVec3("uSculptDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
-    //toolDataMaterial.setVec3("uSculptPos", [sculptPos[0], sculptPos[1], sculptPos[2]] );
-    toolDataMaterial.setVec3("uSculptPos", [ invMat[12], invMat[13], invMat[14]]);
-    
+    toolDataMaterial.setVec3("uMousePos", [ mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+    toolDataMaterial.setVec3("uSculptPos", [sculptPos[0], sculptPos[1], sculptPos[2]]); 
+    toolDataMaterial.setVec3("uCamPos", [invMat[12], invMat[13], invMat[14]]);
 }
 
 var vMatrixStack = [];
