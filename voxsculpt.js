@@ -23,6 +23,7 @@ var rtCopyTexture;
 var rtScrPosTexture;
 var rtScrDepthTexture;
 var rtShadowTexture;
+var rtShadowDepthTexture;
 
 var sculptDataProgram;
 var rtCopyProgram;
@@ -72,6 +73,12 @@ const SCULPT_LAYERS = 8;
 // for 36 tri indices in 16-bit array : 1820*36 < 2^16
 const MAX_PER_BUFFER = 1820;
 
+
+function tutorialOff()
+{
+    document.getElementById("overlayTutorial").style.display = "none";
+}
+
 //
 // start
 //
@@ -79,6 +86,9 @@ const MAX_PER_BUFFER = 1820;
 // sets everything up
 //
 function start() {
+
+    document.getElementById("overlayTutorial").style.display = "block";
+
     canvas = document.getElementById("glcanvas");
 
     canvas.width  = window.innerWidth;
@@ -316,7 +326,7 @@ function initParticleData()
     var quadVS = getShader(gl, "screenquad-vs");
     var sculptFS = getShader(gl, "sculpt2-fs");
     var copyFS = getShader(gl, "copy-fs");       
-    var paintFS = getShader(gl, "paint-fs" );
+    var paintFS = getShader(gl, "paint2-fs" );
     var composeFS = getShader(gl, "compose-fs");
     
     toolShaders.length = 2;
@@ -340,11 +350,12 @@ function initParticleData()
     toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
-    toolDataMaterial.setFloat("uRadius", 0.1 );
+    toolDataMaterial.setFloat("uRadius", 0.05 );
     toolDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
     toolDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
     toolDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
-    
+    toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+    toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.0, 0.0]));
     
     
     
@@ -631,7 +642,7 @@ function render( deltaTime )
 
     //blit( rtScrPosTexture, null, canvas.width, canvas.height);
 
-    //if( leftDown ) // && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
+    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
     {
         renderParticleData( deltaTime );
         lastActionTime = lastUpdateTime;
@@ -868,6 +879,37 @@ function handleRightClick(event) {
 
 var sculptRay = [];  
 var mouseCoord = [];
+
+function setToolShader(index) {
+    toolDataMaterial.setShader(toolShaders[index]);
+}
+
+function changeBrushSize() {
+    var brushSize = document.getElementById("brushSize").value;
+
+    brushSize = parseInt(brushSize);
+
+    brushSize = ( brushSize / 200.0 );
+
+    brushSize = ( brushSize * brushSize );
+
+    toolDataMaterial.setFloat("uRadius", brushSize);
+}
+
+function changePaintColor() {
+    var colorHex = document.getElementById("paintColorPicker").value;
+
+    colorHex = "0x" + colorHex.slice(1);
+
+    colorHex = parseInt(colorHex);
+
+    var r = ( ( colorHex >> 16 ) & 0xFF )  / (0xFF * 1.0) ;
+    var g = ( ( colorHex >> 8 ) & 0xFF )  / (0xFF * 1.0);
+    var b = ( colorHex & 0xFF )  / (0xFF * 1.0);
+
+
+    toolDataMaterial.setVec3("uToolColor", [r, g, b]);
+}
     
 function setupSculpt(nX, nY) {
         

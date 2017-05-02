@@ -20,6 +20,7 @@ class Material {
         this.vertexAttributes = [];
         this.matrixAttributes = [];
         this.vec3Attributes = [];
+        this.vec2Attributes = [];
     }
     
     
@@ -36,6 +37,16 @@ class Material {
     setMatrix( matName, matValue ) 
     {
         this.matrixAttributes[matName] = matValue;
+    }
+
+    setVec2( vecName, vecValue )
+    {
+        this.vec2Attributes[vecName] = vecValue;
+    }
+
+    getVec3( vecName )
+    {
+        return this.vec2Attributes[vecName];
     }
     
     setVec3( vecName, vecValue )
@@ -93,8 +104,12 @@ class Material {
         
         for( var attName in this.vec3Attributes )
         {
-
             gl.uniform3fv( gl.getUniformLocation( this.shaderProgram, attName ), this.vec3Attributes[attName]) ;
+        }
+
+        for( var attName in this.vec2Attributes )
+        {
+            gl.uniform2fv( gl.getUniformLocation( this.shaderProgram, attName ), this.vec2Attributes[attName]) ;
         }
         
         
