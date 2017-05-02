@@ -13,6 +13,12 @@
 
     <script id="cubeframe-fs" type="x-shader/x-fragment">
         varying highp vec3 vObjNormal;
+        varying highp vec3 vColor;
+
+        varying highp vec3 vPosition;
+        varying highp vec2 vUV;
+
+        uniform highp float cubeSize;
 
         void main(void) {
             highp vec4 texelColor;
@@ -23,7 +29,7 @@
             
             if(onEdgeX && onEdgeZ || onEdgeX && onEdgeY || onEdgeY && onEdgeZ )
             {
-                texelColor.rgb = vec3(0.0);
+                texelColor.rgb = vPosition / 256.0;
                 texelColor.a = 1.0;
             }
             else
@@ -49,6 +55,7 @@
         }
     </script>
     
+    
     <script id="voxel-fs" type="x-shader/x-fragment">
         varying highp vec3 vObjNormal;
         varying highp vec3 vColor;
@@ -57,6 +64,56 @@
             gl_FragColor = vec4( vColor, 1.0);
         }
     </script>
+
+    <script id="position-fs" type="x-shader/x-fragment">
+        varying highp vec3 vPosition;
+        varying highp vec2 vUV;
+
+        uniform highp float cubeSize;
+
+        void main(void) {
+            highp vec4 color;
+            color.xyz = vPosition / 256.0;
+            //color.xyz -= 1.0;
+            color.a = 1.0;
+            gl_FragColor = color;
+        }
+
+    </script>
+
+    <script id="compose-fs" type="x-shader/x-fragment">
+        uniform sampler2D uVoxTex;
+        uniform sampler2D uPosTex;
+        uniform highp float cubeSize;       // 64.0
+        uniform highp float layersPerRow;   // 8
+        uniform highp float imageSize;      // 512
+
+        varying highp vec2 vTextureCoord;
+
+        void main(void) 
+        {
+            highp vec4 cubePos = texture2D(uPosTex, vTextureCoord.st);
+
+            highp vec4 color = cubePos;
+
+
+            if( cubePos.a > 0.0 )
+            {
+                cubePos.xyz = cubePos.xyz * ( 256.0);
+
+                highp vec2 uv = vec2( mod( cubePos.x, cubeSize ),  mod( floor(cubePos.y), cubeSize )) + vec2( floor( mod(cubePos.z, layersPerRow) ), floor(cubePos.z / layersPerRow) ) * cubeSize;
+                uv /= imageSize; 
+
+                //color = vec4( uv, 0.0, 1.0);
+                color =  texture2D(uVoxTex, uv);
+            }
+            
+            //color = ( color * 256.0 ) / 64.0;
+
+            gl_FragColor = color;
+        }
+
+    </script>
     
     
     
@@ -64,24 +121,34 @@
         attribute highp vec3 aVertexPosition;
 
         uniform highp mat4 uNormalMatrix;
-        uniform highp mat4 uMVMatrix;
+        uniform highp mat4 uMMatrix;
+        uniform highp mat4 uVMatrix;
         uniform highp mat4 uPMatrix;
         uniform sampler2D uVoxTex;
 
+        uniform highp float cubeSize; // 64.0
+        uniform highp float layersPerRow; // 8
+        uniform highp float imageSize; // 512
+
         varying highp vec3 vObjNormal;
         varying highp vec3 vColor;
+        varying highp vec3 vPosition;
+        varying highp vec2 vUV;
 
         void main(void) {
 
             highp vec3 cubePos = aVertexPosition + vec3(0.5, 0.5, 0.5 );
             cubePos.xyz = floor( cubePos.xyz / 2.0 );
             
-            highp vec2 uv = vec2( mod( cubePos.x, 64.0 ), mod( cubePos.y, 64.0 ) ) + vec2(mod(cubePos.z, 8.0), floor(cubePos.z / 8.0) ) * 64.0;
-            highp vec4 col = texture2D(uVoxTex, uv / 512.0 ).rgba;
+            highp vec2 uv = vec2( mod( cubePos.x, cubeSize ), mod( cubePos.y, cubeSize ) ) + vec2(mod(cubePos.z, layersPerRow), floor(cubePos.z / layersPerRow) ) * cubeSize;
+            highp vec4 col = texture2D(uVoxTex, uv / imageSize ).rgba;
             
             highp vec3 offset = aVertexPosition - cubePos * 2.0;          
                         
-            highp vec3 pos = offset + cubePos - vec3(32.0 );
+            highp vec3 pos = offset + cubePos - vec3(cubeSize * 0.5 );
+
+            vPosition = cubePos;
+            vUV = uv;
             
             if( col.a <= 0.5 )
             {
@@ -89,7 +156,7 @@
             }
             else
             {
-                gl_Position = uPMatrix * uMVMatrix * vec4(pos, 1.0);
+                gl_Position = uPMatrix * uVMatrix * vec4(pos, 1.0);
             }
 
             highp vec3 objNormal = normalize(aVertexPosition - cubePos * 2.0);
@@ -98,6 +165,196 @@
             
             vColor = col.rgb;
         }
+    </script>
+
+    <script id="sculpt2-fs" type="x-shader/x-fragment">
+        uniform sampler2D uVoxTex;
+        uniform sampler2D uPosTex;
+
+        uniform highp mat4 uVMatrix;
+        uniform highp mat4 uPMatrix;
+
+        uniform highp vec3 uSculptDir;
+        uniform highp vec3 uSculptPos;
+        uniform highp vec3 uLastPos;
+
+        uniform highp vec3 uMousePos;
+        uniform highp vec3 uCamPos;
+
+        uniform highp float uRadius;
+        uniform highp float uDeltaTime;
+
+        uniform highp float cubeSize;       // 64.0
+        uniform highp float layersPerRow;   // 8
+        uniform highp float imageSize;      // 512
+
+        uniform highp vec2 uCanvasSize;
+
+        varying highp vec2 vTextureCoord;
+
+        highp vec2 closestPoint( highp vec2 a, highp vec2 b, highp vec2 p )
+        {
+            highp vec2 ap = p - a;
+            highp vec2 ab = b - a;
+            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
+            highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
+            highp float t = ap_ab / ab2;
+            
+            if( t < 0.0 ) t = 0.0;
+            else if ( t > 1.0 ) t = 1.0;
+            
+            return a + ab * t;
+        }
+
+        void main(void) 
+        {
+            highp float spacing = 1.0/layersPerRow;
+            
+            highp vec3 cubePos;        
+            cubePos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
+            cubePos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
+            cubePos.z = floor( vTextureCoord.x * layersPerRow ) + floor( vTextureCoord.y * layersPerRow ) * layersPerRow;   
+   
+            cubePos.xy *= cubeSize;
+
+            cubePos.xyz = floor(cubePos.xyz);
+            
+            cubePos.xyz -= vec3(cubeSize*0.5);
+
+            highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
+            scrPos.xyz /= scrPos.w; 
+            scrPos.xy = scrPos.xy * 0.5 + 0.5;
+
+            scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
+            highp vec4 smplPos = texture2D(uPosTex, scrPos.xy);
+            smplPos = smplPos * 256.0;
+
+            smplPos.xyz = floor(smplPos.xyz);
+            
+            highp vec4 vox = texture2D(uVoxTex, vTextureCoord);
+
+            cubePos.xyz += vec3(cubeSize*0.5);
+
+            cubePos.xyz = floor(cubePos.xyz);
+
+            //if( smplPos.a > 0.0 )
+            {
+                highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
+
+                highp float aspect = uCanvasSize.y / uCanvasSize.x;
+
+                if( abs( scrPos.x - linePoint.x) < uRadius * aspect && abs(scrPos.y - linePoint.y ) < uRadius )
+                {
+                    highp float offset = length( cubePos.xyz - uCamPos.xyz ) - length( smplPos.xyz - uSculptPos.xyz);
+
+                    if( offset <= 2.0 )
+                    {
+                        vox.a = 0.0;
+                    }
+                }
+
+            }
+
+            gl_FragColor = vox;
+        }
+    </script>
+
+    
+    <script id="paint2-fs" type="x-shader/x-fragment">
+        uniform sampler2D uVoxTex;
+        uniform sampler2D uPosTex;
+
+        uniform highp mat4 uVMatrix;
+        uniform highp mat4 uPMatrix;
+
+        uniform highp vec3 uSculptDir;
+        uniform highp vec3 uSculptPos;
+        uniform highp vec3 uLastPos;
+
+        uniform highp vec3 uMousePos;
+        uniform highp vec3 uCamPos;
+
+        uniform highp float uRadius;
+        uniform highp float uDeltaTime;
+
+        uniform highp vec3 uToolColor;
+
+        uniform highp float cubeSize;       // 64.0
+        uniform highp float layersPerRow;   // 8
+        uniform highp float imageSize;      // 512
+
+        uniform highp vec2 uCanvasSize;
+
+        varying highp vec2 vTextureCoord;
+
+        
+
+        highp vec2 closestPoint( highp vec2 a, highp vec2 b, highp vec2 p )
+        {
+            highp vec2 ap = p - a;
+            highp vec2 ab = b - a;
+            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
+            highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
+            highp float t = ap_ab / ab2;
+            
+            if( t < 0.0 ) t = 0.0;
+            else if ( t > 1.0 ) t = 1.0;
+            
+            return a + ab * t;
+        }
+
+        void main(void) 
+        {
+            highp float spacing = 1.0/layersPerRow;
+            
+            highp vec3 cubePos;        
+            cubePos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
+            cubePos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
+            cubePos.z = floor( vTextureCoord.x * layersPerRow ) + floor( vTextureCoord.y * layersPerRow ) * layersPerRow;   
+   
+            cubePos.xy *= cubeSize;
+
+            cubePos.xyz = floor(cubePos.xyz);
+            
+            cubePos.xyz -= vec3(cubeSize*0.5);
+
+            highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
+            scrPos.xyz /= scrPos.w; 
+            scrPos.xy = scrPos.xy * 0.5 + 0.5;
+
+            scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
+            highp vec4 smplPos = texture2D(uPosTex, scrPos.xy);
+            smplPos = smplPos * 256.0;
+
+            smplPos.xyz = floor(smplPos.xyz);
+            
+            highp vec4 vox = texture2D(uVoxTex, vTextureCoord);
+
+            cubePos.xyz += vec3(cubeSize*0.5);
+
+            cubePos.xyz = floor(cubePos.xyz);
+
+            //if( smplPos.a > 0.0 )
+            {
+                highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
+
+                highp float aspect = uCanvasSize.y / uCanvasSize.x;
+
+                if( abs( scrPos.x - linePoint.x) < uRadius * aspect && abs(scrPos.y - linePoint.y ) < uRadius )
+                {
+                    highp float offset = length( cubePos.xyz - uCamPos.xyz ) - length( smplPos.xyz - uSculptPos.xyz);
+
+                    if( offset <= 2.0 )
+                    {
+                        vox.rgb = uToolColor.rgb;
+                    }
+                }
+
+            }
+
+            gl_FragColor = vox;
+        }
+
     </script>
     
     <script id="sculpt-fs" type="x-shader/x-fragment">
@@ -111,6 +368,10 @@
 
         uniform highp float uRadius;
         uniform highp float uDeltaTime;
+
+        uniform highp float cubeSize; // 64.0
+        uniform highp float layersPerRow; // 8
+        uniform highp float imageSize; // 512
         
         highp float rand(highp vec2 co){
             return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -136,18 +397,18 @@
             
             // vec2( mod( cubePos.x, 64.0 ), mod( cubePos.z, 64.0 ) ) + vec2(mod(cubePos.y, 8.0), floor(cubePos.y / 8.0) ) * 64.0;
             
-            highp float spacing = 1.0/8.0;
+            highp float spacing = 1.0/layersPerRow;
             
             highp vec3 pos;        
-            pos.x = mod( vTextureCoord.x, spacing ) * 8.0;
-            pos.y = mod( vTextureCoord.y, spacing ) * 8.0;
-            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * 8.0;   
+            pos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
+            pos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
+            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
                                 
-            pos.xy *= 64.0;
+            pos.xy *= cubeSize;
             
             //vox.rgb = pos.xyz / 64.0;
                         
-            pos.xyz -= vec3(32.0);
+            pos.xyz -= vec3(cubeSize*0.5);
            
             //vox.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / 32.0 ;
                         
@@ -192,15 +453,15 @@
                         }
                         
                         highp vec3 frontPos = pos - off;
-                        frontPos += vec3(32.0);
+                        frontPos += vec3(cubeSize*0.5);
                         
-                        highp vec2 uv = frontPos.xy + vec2(mod(frontPos.z, 8.0), floor(frontPos.z / 8.0) ) * 64.0;
+                        highp vec2 uv = frontPos.xy + vec2(mod(frontPos.z, layersPerRow), floor(frontPos.z / layersPerRow) ) * cubeSize;
                         
-                        uv = uv / 512.0;              
+                        uv = uv / imageSize;              
                         
-                        bool outOfRange = frontPos.x < 0.0 || frontPos.x > 64.0 ||
-                                            frontPos.y < 0.0 || frontPos.y > 64.0 ||
-                                            frontPos.z < 0.0 || frontPos.z > 63.0;
+                        bool outOfRange = frontPos.x < 0.0 || frontPos.x > cubeSize ||
+                                            frontPos.y < 0.0 || frontPos.y > cubeSize ||
+                                            frontPos.z < 0.0 || frontPos.z > cubeSize - 1.0;
                         
                         if(outOfRange ||  texture2D(uVoxTex, uv ).a <= 0.5 )
                         {
@@ -213,8 +474,9 @@
             gl_FragColor = vox;
         }
     </script>   
+
     
-        <script id="paint-fs" type="x-shader/x-fragment">
+    <script id="paint-fs" type="x-shader/x-fragment">
         varying highp vec2 vTextureCoord;
 
         uniform sampler2D uVoxTex;
@@ -223,6 +485,10 @@
 
         uniform highp float uRadius;
         uniform highp float uDeltaTime;
+
+        uniform highp float cubeSize; // 64.0
+        uniform highp float layersPerRow; // 8
+        uniform highp float imageSize; // 512
         
         highp float rand(highp vec2 co){
             return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -234,18 +500,18 @@
             
             // vec2( mod( cubePos.x, 64.0 ), mod( cubePos.z, 64.0 ) ) + vec2(mod(cubePos.y, 8.0), floor(cubePos.y / 8.0) ) * 64.0;
             
-            highp float spacing = 1.0/8.0;
+            highp float spacing = 1.0/layersPerRow;
             
             highp vec3 pos;        
-            pos.x = mod( vTextureCoord.x, spacing ) * 8.0;
-            pos.y = mod( vTextureCoord.y, spacing ) * 8.0;
-            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * 8.0;   
+            pos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
+            pos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
+            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
                                 
-            pos.xy *= 64.0;
+            pos.xy *= cubeSize;
             
             //vox.rgb = pos.xyz / 64.0;
                         
-            pos.xyz -= vec3(32.0);
+            pos.xyz -= vec3(cubeSize*0.5);
            
             //vox.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / 32.0 ;
                         
@@ -285,15 +551,15 @@
                         }
                         
                         highp vec3 frontPos = pos - off;
-                        frontPos += vec3(32.0);
+                        frontPos += vec3(cubeSize*0.5);
                         
-                        highp vec2 uv = frontPos.xy + vec2(mod(frontPos.z, 8.0), floor(frontPos.z / 8.0) ) * 64.0;
+                        highp vec2 uv = frontPos.xy + vec2(mod(frontPos.z, layersPerRow), floor(frontPos.z / layersPerRow) ) * cubeSize;
                         
-                        uv = uv / 512.0;              
+                        uv = uv / imageSize;              
                         
-                        bool outOfRange = frontPos.x < 0.0 || frontPos.x > 64.0 ||
-                                            frontPos.y < 0.0 || frontPos.y > 64.0 ||
-                                            frontPos.z < 0.0 || frontPos.z > 63.0;
+                        bool outOfRange = frontPos.x < 0.0 || frontPos.x > cubeSize ||
+                                            frontPos.y < 0.0 || frontPos.y > cubeSize ||
+                                            frontPos.z < 0.0 || frontPos.z > cubeSize - 1.0;
                         
                         if(outOfRange ||  texture2D(uVoxTex, uv ).a <= 0.5 )
                         {
@@ -334,26 +600,30 @@
     <script id="initdata-fs" type="x-shader/x-fragment">
         varying highp vec2 vTextureCoord;
 
+        uniform highp float cubeSize; // 64.0
+        uniform highp float layersPerRow; // 8
+        uniform highp float imageSize; // 512
+
         highp float rand(highp vec2 co){
             return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
         }
 
         void main(void) {
             //highp float startLife = rand(vTextureCoord.st) + 1.0;
-            highp float spacing = 1.0/8.0;
+            highp float spacing = 1.0/layersPerRow;
             
             highp vec3 pos;        
-            pos.x = mod( vTextureCoord.x, spacing ) * 8.0;
-            pos.y = mod( vTextureCoord.y, spacing ) * 8.0;
-            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * 8.0;   
+            pos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
+            pos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
+            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
                                 
-            pos.xy *= 64.0;
+            pos.xy *= cubeSize;
             
                         
-            pos.xyz -= vec3(32.0);
+            pos.xyz -= vec3(cubeSize*0.5);
            
             highp vec4 col;
-            col.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / 32.0 ;
+            col.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / (cubeSize*0.5) ;
             col.a = 1.0;
             gl_FragColor = col;
         }
@@ -366,11 +636,55 @@
             Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
         </canvas>
         <div id="overlay">                       
-            <div>Left click to carve</div>
-            <div>Right click to rotate</div>
             <div>Load Voxel Data from Image <input id="fileItem" type="file"></div>
+            <div> 
+                <form action="">
+                    <input type="radio" name="tool" value="subtract" onClick="setToolShader(0);"> Sculpt Subtract
+                    <input type="radio" name="tool" value="Paint" onClick="setToolShader(1);"> Paint
+                    <br />
+                    Brush Size
+                    <input id="brushSize" type="range" min="16" max="100" step="1" onchange="changeBrushSize()" />
+                    <br />
+                    Paint Color
+                    <input type="color" id="paintColorPicker" onchange="changePaintColor()" value="#ff0000" style="width:50%" >                    
+                    
+                </form>
+            </div>
+            </div>
+                
+            </div>
         </div>
     </div>
+
+ <style>
+        #overlayTutorial {
+            position: fixed; /* Sit on top of the page content */
+            display: none; /* Hidden by default */
+            width: 100%; /* Full width (cover the whole page) */
+            height: 100%; /* Full height (cover the whole page) */
+            top: 0; 
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5); /* Black background with opacity */
+            z-index: 2; /* Specify a stack order in case you're using a different order for other elements */
+            cursor: pointer; /* Add a pointer on hover */
+        }
+
+        #overlaytext{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            font-size: 50px;
+            color: white;
+            transform: translate(-50%,-50%);
+            -ms-transform: translate(-50%,-50%);
+        }
+</style>
+
+<div id="overlayTutorial" onclick="tutorialOff()">
+    <div id="overlaytext">Left Click to Sculpt <br/> Right Click to Rotate</div>
+</div>   
 
 </body>
 </html>
