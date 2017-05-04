@@ -117,6 +117,17 @@ function start() {
         canvas.oncontextmenu = handleRightClick;
         document.onmouseup = handleMouseUp;
         document.onmousemove = handleMouseMove;
+        //document.ontouchstart = handleTouchStart;
+        //document.ontouchmove = handleTouchMove;
+        document.body.addEventListener('touchmove', function(event) {
+            event.preventDefault();
+            handleTouchMove(event);
+        }, false); 
+
+        document.body.addEventListener('touchstart', function(event) {
+            event.preventDefault();
+            handleTouchStart(event);
+        }, false); 
         
         // start the core loop cycle
         requestAnimationFrame(tick);     
@@ -786,55 +797,7 @@ function cross(vecA, vecB ) {
     return vecC;
 }
 
-function handleMouseDown(event) {
-    
-    lastMouseX = event.clientX;
-    lastMouseY = event.clientY;
-        
-    var rightclick;
-    if (event.which) rightclick = (event.which == 3);
-    else if (event.button) rightclick = (event.button == 2);
-    
-    if( !rightclick )
-    {
-        var nX = ( (lastMouseX / window.innerWidth) ) * 2.0 - 1.0;
-        var nY = 1.0 - ( lastMouseY / ( window.innerHeight ) ) * 2.0;
-        
-        setupSculpt(nX, nY );
-        lastActionTime = 0.0;
-        
-        toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
-        toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
-        leftDown = true;
-    }
-    else
-    {
-        rightDown = true;
-    }
-}
-
-function handleMouseUp(event) {
-    var rightclick;
-    if (event.which) rightclick = (event.which == 3);
-    else if (event.button) rightclick = (event.button == 2);
-    
-    if( !rightclick )
-    {
-        leftDown = false;
-    }
-    else
-    {
-        rightDown = false;
-    }
-}
-
-function handleMouseMove(event) {
-    if (!( leftDown || rightDown )) {
-        return;
-    }
-    var newX = event.clientX;
-    var newY = event.clientY;
-
+function handlePointerMove(event, newX, newY) {
     
     if( rightDown )
     {
@@ -872,8 +835,122 @@ function handleMouseMove(event) {
     lastMouseY = newY;
 }
 
+function handlePointerStart(event, rightclick)
+{
+
+    
+    if( !rightclick )
+    {
+        var nX = ( (lastMouseX / window.innerWidth) ) * 2.0 - 1.0;
+        var nY = 1.0 - ( lastMouseY / ( window.innerHeight ) ) * 2.0;
+        
+        setupSculpt(nX, nY );
+        lastActionTime = 0.0;
+        
+        toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
+        toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+        leftDown = true;
+    }
+    else
+    {
+        rightDown = true;
+    }
+}
+
+function handleMouseDown(event) {
+    
+    lastMouseX = event.clientX;
+    lastMouseY = event.clientY;
+
+    var rightclick;
+    if (event.which) rightclick = (event.which == 3);
+    else if (event.button) rightclick = (event.button == 2);
+    
+    handlePointerStart(event, rightclick);
+}
+
+function handleMouseUp(event) {
+    var rightclick;
+    if (event.which) rightclick = (event.which == 3);
+    else if (event.button) rightclick = (event.button == 2);
+    
+    if( !rightclick )
+    {
+        leftDown = false;
+    }
+    else
+    {
+        rightDown = false;
+    }
+}
+
+function handleMouseMove(event) {
+    if (!( leftDown || rightDown )) {
+        return;
+    }
+    handlePointerMove(event, event.clientX, event.clientY);
+}
+
 function handleRightClick(event) {
     event.preventDefault();
+    return false;
+}
+
+var touches = []
+
+function handleTouchStart(event) {
+    touches = event.touches;
+
+    
+
+    var rightclick = false;
+
+    if( touches.length == 1 )
+    {
+        lastMouseX = touches[0].clientX;
+        lastMouseY = touches[0].clientY;
+    }
+    else if( touches.length == 2 )
+    {
+        rightclick = true;
+        lastMouseX = touches[1].clientX;
+        lastMouseY = touches[1].clientY;
+    }
+
+
+    handlePointerStart(event, rightclick);
+}
+
+
+function handleTouchMove(event) {
+    touches = event.touches;
+
+    var newX, newY;
+
+    if( touches.length  == 1 )
+    {
+        leftDown = true;
+        rightDown = false;
+        newX = touches[0].clientX;
+        newY = touches[0].clientY;
+    }
+    else if ( touches.length == 2 )
+    {
+        leftDown = false;
+        rightDown = true;
+        newX = touches[1].clientX;
+        newY = touches[1].clientY;
+    }
+    else
+    {
+        leftDown = false;
+        rightDown = false;
+        newX = lastMouseX;
+        newY = lastMouseY;
+    }
+
+    handlePointerMove(event, newX, newY);
+
     return false;
 }
 
