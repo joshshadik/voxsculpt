@@ -84,11 +84,18 @@
     <script id="compose-fs" type="x-shader/x-fragment">
         uniform sampler2D uVoxTex;
         uniform sampler2D uPosTex;
+        uniform sampler2D uShadowTex;
+
         uniform highp float cubeSize;       // 64.0
         uniform highp float layersPerRow;   // 8
         uniform highp float imageSize;      // 512
 
+        uniform highp mat4 uLightSpace;
+
+        uniform highp vec3 uLightPos;
+
         varying highp vec2 vTextureCoord;
+
 
         void main(void) 
         {
@@ -104,11 +111,23 @@
                 highp vec2 uv = vec2( mod( cubePos.x, cubeSize ),  mod( floor(cubePos.y), cubeSize )) + vec2( floor( mod(cubePos.z, layersPerRow) ), floor(cubePos.z / layersPerRow) ) * cubeSize;
                 uv /= imageSize; 
 
-                //color = vec4( uv, 0.0, 1.0);
                 color =  texture2D(uVoxTex, uv);
+
+                cubePos.xyz -= vec3(cubeSize*0.5);
+                highp vec4 lightPos = uLightSpace * vec4( cubePos.xyz, 1.0);
+
+                lightPos.xyz = lightPos.xyz / lightPos.w;
+
+                lightPos.xyz = lightPos.xyz * 0.5 + 0.5;
+
+                highp vec4 shadowPos = texture2D(uShadowTex, lightPos.xy);
+             
+                if( shadowPos.r < lightPos.z - 0.0001  )
+                {
+                    color.rgb *= 0.5; //1.0 - ( clamp(( lightPos.z - shadowPos.r )* 2000.0, 0.0, 1.0) * 0.5 ) ;
+                }
+
             }
-            
-            //color = ( color * 256.0 ) / 64.0;
 
             gl_FragColor = color;
         }
@@ -625,7 +644,7 @@
             highp vec4 col;
             col.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / (cubeSize*0.5) ;
             col.a = 1.0;
-            gl_FragColor = col;
+            gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0); //col;
         }
     </script>
 </head>
