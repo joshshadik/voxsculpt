@@ -1003,8 +1003,8 @@ function handleTouchStart(event) {
         lastMouseX = (touches[1].clientX + touches[0].clientX) / 2.0;
         lastMouseY = (touches[1].clientY + touhces[0].clientY) / 2.0;
 
-        lastTouchZoomX = touches[1].clientX - touches[0].clientX;
-        lastTouchZoomY = touches[1].clientY - touches[0].clientY;
+        lastTouchZoomX = touches[0].clientX; //touches[1].clientX - touches[0].clientX;
+        lastTouchZoomY = touches[0].clientY; //touches[1].clientY - touches[0].clientY;
     }
 
 
@@ -1026,15 +1026,16 @@ function handleTouchMove(event) {
     {
         leftDown = true;
         rightDown = false;
-        newX = touches[0].clientX;
-        newY = touches[0].clientY;
+        newX = touches[0].clientX / 1.0;
+        newY = touches[0].clientY / 1.0;
+        console.log("newXY " + newX + ", " + newY );
     }
     else if ( touches.length == 2 )
     {
         leftDown = false;
         rightDown = true;
-        newX = (touches[1].clientX + touches[0].clientX) / 2.0;
-        newY = (touches[1].clientY + touhces[0].clientY) / 2.0;
+        newX = touches[0].clientX; //(touches[1].clientX + touches[0].clientX) / 2.0;
+        newY = touches[0].clientY; //(touches[1].clientY + touhces[0].clientY) / 2.0;
     }
     else
     {
@@ -1042,6 +1043,8 @@ function handleTouchMove(event) {
         rightDown = false;
         newX = lastMouseX;
         newY = lastMouseY;
+
+        return;
     }
 
     var zoomDelta = 0;
