@@ -113,7 +113,7 @@
                 {
                     highp vec4 shadowPos = texture2D(uShadowTex, lightPos.xy + vec2( x, y) * EPSILON );
                     
-                    if( shadowPos.r < lightPos.z - 0.04  )
+                    if( shadowPos.r < lightPos.z - 0.02 )
                     {
                         factor += 1.0;
                     }

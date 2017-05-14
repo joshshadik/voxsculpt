@@ -349,8 +349,8 @@ function initParticleData()
     rtShadowBuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
     
-    rtShadowBuffer.width = RT_TEX_SIZE;
-    rtShadowBuffer.height = RT_TEX_SIZE;
+    rtShadowBuffer.width = RT_TEX_SIZE * 2;
+    rtShadowBuffer.height = RT_TEX_SIZE * 2;
 
     rtShadowTexture = gl.createTexture();
     gl.bindTexture( gl.TEXTURE_2D, rtShadowTexture);
@@ -692,7 +692,7 @@ function renderShadows()
 
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
-    gl.viewport( 0, 0, RT_TEX_SIZE, RT_TEX_SIZE);
+    gl.viewport( 0, 0, rtShadowBuffer.width, rtShadowBuffer.height);
 
     gl.clearColor( 0.0, 0.0, 0.0, 1.0);
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
