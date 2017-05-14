@@ -45,6 +45,9 @@ var rightDown = false;
 var lastMouseX = null;
 var lastMouseY = null;
 
+
+var currSculpting = false;
+
 var perspectiveMatrix = [];
 var vMatrix = [];
 
@@ -117,6 +120,7 @@ function start() {
         canvas.oncontextmenu = handleRightClick;
         document.onmouseup = handleMouseUp;
         document.onmousemove = handleMouseMove;
+        document.onmousewheel = handleMouseWheel;
         //document.ontouchstart = handleTouchStart;
         //document.ontouchmove = handleTouchMove;
         document.body.addEventListener('touchmove', function(event) {
@@ -131,6 +135,10 @@ function start() {
         
         // start the core loop cycle
         requestAnimationFrame(tick);     
+    }
+    else
+    {
+        alert("sorry, your browser/device does not support the webgl compabilities this application needs.")
     }
 }
 
@@ -653,7 +661,7 @@ function render( deltaTime )
 
     //blit( rtScrPosTexture, null, canvas.width, canvas.height);
 
-    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
+    if( currSculpting && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
     {
         renderParticleData( deltaTime );
         lastActionTime = lastUpdateTime;
@@ -797,12 +805,25 @@ function cross(vecA, vecB ) {
     return vecC;
 }
 
-function handlePointerMove(event, newX, newY) {
+function handlePointerMove(event, newX, newY, sculpt, rotate, zoomAmount) {
     
-    if( rightDown )
+
+    var deltaX = newX - lastMouseX;
+    var deltaY = newY - lastMouseY;
+
+    if( zoomAmount == null )
     {
-        var deltaX = newX - lastMouseX;
-        var deltaY = newY - lastMouseY;
+        zoomAmount = deltaX + deltaY;
+    }
+
+
+    if( zoomAmount )
+    {
+        handleZoom(zoomAmount);
+    }
+    
+    if( rotate )
+    {
     
         var verticalRot = quat.create();
         quat.rotateX(verticalRot, verticalRot, ( deltaY / window.innerHeight ) * 30.0 );
@@ -821,25 +842,26 @@ function handlePointerMove(event, newX, newY) {
         vec3.normalize(cameraUp, cameraUp );
         //console.log("camera forward: " + cameraForward + "     right: " + cameraRight + "  up: " + cameraUp );
     }
+
     
-    if( leftDown)
+    if( sculpt)
     {
         var nX = ( newX / window.innerWidth) * 2.0 - 1.0;
         var nY = 1.0 - ( newY / window.innerHeight ) * 2.0;
         
         setupSculpt(nX, nY );
     }
+
+    currSculpting = sculpt;
     
 
     lastMouseX = newX;
     lastMouseY = newY;
 }
 
-function handlePointerStart(event, rightclick)
-{
-
-    
-    if( !rightclick )
+function handlePointerStart(event, sculpt, rotate, zoom)
+{    
+    if( sculpt )
     {
         var nX = ( (lastMouseX / window.innerWidth) ) * 2.0 - 1.0;
         var nY = 1.0 - ( lastMouseY / ( window.innerHeight ) ) * 2.0;
@@ -849,12 +871,12 @@ function handlePointerStart(event, rightclick)
         
         toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
         toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
-        leftDown = true;
+
+        handlePointerMove(event, lastMouseX, lastMouseY, true, false, 0);
+
+        currSculpting = true;
     }
-    else
-    {
-        rightDown = true;
-    }
+    
 }
 
 function handleMouseDown(event) {
@@ -865,14 +887,40 @@ function handleMouseDown(event) {
     var rightclick;
     if (event.which) rightclick = (event.which == 3);
     else if (event.button) rightclick = (event.button == 2);
+
+    if( rightclick )
+    {
+        rightDown = true;
+    }
+    else
+    {
+        leftDown = true;
+    }
     
-    handlePointerStart(event, rightclick);
+    var altKey = event.altKey == 1;
+    
+    var sculpting = (!rightclick && !altKey);
+    var rotating = (!rightclick && altKey) || ( rightclick && !altKey);
+    var zooming = (rightclick && altKey);
+    
+    
+    handlePointerStart(event, 
+        sculpting,
+        rotating,
+        zooming
+    );
 }
 
 function handleMouseUp(event) {
     var rightclick;
     if (event.which) rightclick = (event.which == 3);
     else if (event.button) rightclick = (event.button == 2);
+
+    var altKey = event.altKey == 1;
+    
+    var sculpting = (!rightclick && !altKey);
+    var rotating = (!rightclick && altKey) || ( rightclick && !altKey);
+    var zooming = (rightclick && altKey);
     
     if( !rightclick )
     {
@@ -882,13 +930,52 @@ function handleMouseUp(event) {
     {
         rightDown = false;
     }
+
+    if( sculpting )
+    {
+        currSculpting = false;
+    }
 }
 
 function handleMouseMove(event) {
     if (!( leftDown || rightDown )) {
         return;
     }
-    handlePointerMove(event, event.clientX, event.clientY);
+
+    var altKey = event.altKey == 1;
+
+    var sculpting = (leftDown && !altKey);
+    var rotating = (leftDown && altKey) || ( rightDown && !altKey);
+    var zooming = (rightDown && altKey);
+
+    handlePointerMove(event, event.clientX, event.clientY, 
+    sculpting, 
+    rotating, 
+    zooming ? null : 0
+    );
+}
+
+function handleZoom(delta)
+{
+    var currentZ = cameraPosition[2];
+
+    currentZ += delta;
+
+    if( currentZ < -500 )
+    {
+        currentZ = -500;
+    }
+    else if ( currentZ > -10 )
+    {
+        currentZ = -10;
+    }
+
+    cameraPosition[2] = currentZ;
+}
+
+function handleMouseWheel(event) 
+{
+    handleZoom( event.wheelDelta / 120 );
 }
 
 function handleRightClick(event) {
@@ -915,12 +1002,20 @@ function handleTouchStart(event) {
         rightclick = true;
         lastMouseX = touches[1].clientX;
         lastMouseY = touches[1].clientY;
+
+        lastTouchZoomX = touches[1].clientX - touches[0].clientX;
+        lastTouchZoomY = touches[1].clientY - touches[0].clientY;
     }
 
 
-    handlePointerStart(event, rightclick);
+    handlePointerStart(event, 
+    touches.length == 1,
+    touches.length == 2,
+    touches.length == 2);
 }
 
+
+var lastTouchZoomX, lastTouchZoomY;
 
 function handleTouchMove(event) {
     touches = event.touches;
@@ -949,7 +1044,27 @@ function handleTouchMove(event) {
         newY = lastMouseY;
     }
 
-    handlePointerMove(event, newX, newY);
+    var zoomDelta = 0;
+
+    if( touches.length == 2 )
+    {
+        var distX = touches[1].clientX - touches[0].clientX;
+        var distY = touches[1].clientY - touches[0].clientY;
+
+        var deltaX = distX - lastTouchZoomX;
+        var deltaY = distY - lastTouchZoomY;
+
+        zoomDelta = deltaX + deltaY;
+
+        lastTouchZoomX = distX;
+        lastTouchZoomY = distY;
+    }
+
+    handlePointerMove(event, newX, newY, 
+    touches.length == 1,
+    touches.length == 2,
+    zoomDelta
+    );
 
     return false;
 }
@@ -1002,7 +1117,7 @@ function setupSculpt(nX, nY) {
     
 
     mat4.invert( invMat, vMatrix );       
-    sculptRay[3] = 0.0;       
+    //sculptRay[3] = 0.0;       
     mat4.multiply(sculptRay, invMat, sculptRay);
     
 

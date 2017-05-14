@@ -222,7 +222,7 @@
             cubePos.xyz -= vec3(cubeSize*0.5);
 
             highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
-            scrPos.xyz /= scrPos.w; 
+            scrPos.xy /= scrPos.w; 
             scrPos.xy = scrPos.xy * 0.5 + 0.5;
 
             scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
@@ -237,7 +237,7 @@
 
             cubePos.xyz = floor(cubePos.xyz);
 
-            //if( smplPos.a > 0.0 )
+            if( scrPos.z > -2.5 )
             {
                 highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
 
@@ -319,7 +319,7 @@
             cubePos.xyz -= vec3(cubeSize*0.5);
 
             highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
-            scrPos.xyz /= scrPos.w; 
+            scrPos.xy /= scrPos.w; 
             scrPos.xy = scrPos.xy * 0.5 + 0.5;
 
             scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
@@ -334,7 +334,7 @@
 
             cubePos.xyz = floor(cubePos.xyz);
 
-            //if( smplPos.a > 0.0 )
+            if( scrPos.z > -2.5 )
             {
                 highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
 
@@ -683,7 +683,7 @@
 </style>
 
 <div id="overlayTutorial" onclick="tutorialOff()">
-    <div id="overlaytext">Left Click to Sculpt <br/> Right Click to Rotate</div>
+    <div id="overlaytext">Sculpt: Left Click <br/>Rotate: Right Click <br />Zoom: Alt + Right Click</div>
 </div>   
 
 </body>
