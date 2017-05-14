@@ -239,6 +239,46 @@ function initBuffers()
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(batchedElements), gl.STATIC_DRAW);
 }
 
+function setupScreenBuffer()
+{
+    var texelData = gl.UNSIGNED_BYTE;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
+
+    rtScrPosBuffer.width = canvas.width;
+    rtScrPosBuffer.height = canvas.height;
+
+    rtScrPosTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, rtScrPosTexture );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtScrPosTexture, 0);
+
+    rtScrDepthTexture = gl.createTexture();
+    gl.bindTexture( gl.TEXTURE_2D, rtScrDepthTexture );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
+
+
+    if( toolDataMaterial )
+    {
+        toolDataMaterial.setTexture("uPosTex", rtScrPosTexture);
+
+        toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+    }
+
+    if( composeMaterial )
+    {
+        composeMaterial.setTexture("uPosTex", rtScrPosTexture);
+    }
+}
 
 //
 // initParticleData
@@ -288,29 +328,7 @@ function initParticleData()
 
 
     rtScrPosBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
-
-    rtScrPosBuffer.width = canvas.width;
-    rtScrPosBuffer.height = canvas.height;
-
-    rtScrPosTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, rtScrPosTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtScrPosTexture, 0);
-
-    rtScrDepthTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, rtScrDepthTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
-
+    setupScreenBuffer();
 
     rtShadowBuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
@@ -792,6 +810,8 @@ function resize()
     
     // Set the viewport to match
     gl.viewport(0, 0, canvas.width,canvas.height);
+
+    setupScreenBuffer();
   }
 }
 
