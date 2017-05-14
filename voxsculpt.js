@@ -387,12 +387,12 @@ function initParticleData()
     toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
-    toolDataMaterial.setFloat("uRadius", 0.05 );
+    toolDataMaterial.setFloat("uRadius", 0.04 );
     toolDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
     toolDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
     toolDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
     toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
-    toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.0, 0.0]));
+    toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.68, 0.14]));
     
     
     
@@ -1099,20 +1099,20 @@ function setToolShader(index) {
     toolDataMaterial.setShader(toolShaders[index]);
 }
 
-function changeBrushSize() {
-    var brushSize = document.getElementById("brushSize").value;
+function changeBrushSize(brushSize) {
+    // var brushSize = document.getElementById("brushSize").value;
 
-    brushSize = parseInt(brushSize);
+    // brushSize = parseInt(brushSize);
 
-    brushSize = ( brushSize / 200.0 );
+    // brushSize = ( brushSize / 200.0 );
 
-    brushSize = ( brushSize * brushSize );
+    // brushSize = ( brushSize * brushSize );
 
     toolDataMaterial.setFloat("uRadius", brushSize);
 }
 
-function changePaintColor() {
-    var colorHex = document.getElementById("paintColorPicker").value;
+function changePaintColor(colorHex) {
+    //var colorHex = document.getElementById("paintColorPicker").value;
 
     colorHex = "0x" + colorHex.slice(1);
 
