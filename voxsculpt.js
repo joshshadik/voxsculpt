@@ -12,7 +12,11 @@ var voxelMaterialIndex = 0;
 var frameVerticesBuffer;
 var frameIndexBuffer;
 
-// Using multiple framebuffers since can't use multiple color attachments without extensions or webgl2
+var floorVertexBuffer;
+var floorIndexBuffer;
+
+var floorMaterial;
+
 var rtVoxBuffer;
 var rtCopyBuffer;
 var rtScrPosBuffer;
@@ -33,8 +37,6 @@ var copyMaterial;
 var composeMaterial;
 
 var toolShaders = [];
-
-     
 
 var lastUpdateTime = 0;
 
@@ -369,6 +371,8 @@ function initParticleData()
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtShadowDepthTexture, 0);
 
 
+
+
     // create buffers for rendering images on quads
     frameVerticesBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
@@ -377,6 +381,18 @@ function initParticleData()
     frameIndexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(quadVertexIndices), gl.STATIC_DRAW);
+
+
+    floorVertexBuffer  = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, floorVertexBuffer );
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(floorVertices), gl.STATIC_DRAW);
+
+    floorIndexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, floorIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(floorIndices), gl.STATIC_DRAW);
+
+
+
   
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -471,15 +487,19 @@ function initMaterials()
     var voxelFS = getShader(gl, "voxel-fs" );
     var wireframeFS = getShader(gl, "cubeframe-fs");
     var positionFS = getShader(gl, "position-fs");
+    var floorVS = getShader(gl, "floor-vs");
+    var floorFS = getShader(gl, "floor-fs");
 
     voxelMaterials[0] = new Material( basicVS, positionFS );
+
+    floorMaterial = new Material(floorVS, floorFS);
     
     
     
     mat4.perspective(perspectiveMatrix, 45, canvas.width/canvas.height, 0.1, 1000.0);
     
     cameraRotation = quat.create();
-    cameraPosition = vec3.fromValues(0, 0, -100 );
+    cameraPosition = vec3.fromValues(0, 0, -150 );
     cameraUp = vec3.fromValues(0.0, 1.0, 0.0 );
 
     modelRotation = quat.create();
@@ -507,24 +527,30 @@ function initMaterials()
     toolDataMaterial.setMatrix("uVMatrix", new Float32Array( vMatrix ) );
     toolDataMaterial.setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
 
+    floorMaterial.setMatrix("uVMatrix", new Float32Array( vMatrix ) );
+    floorMaterial.setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
 
     lightPosition = vec3.fromValues( 0.0, 0.0, -85.0 );
     lightRotation = quat.create();
     
-    quat.rotateX(lightRotation, lightRotation, 60);
-    quat.rotateZ(lightRotation, lightRotation, 60);
-    quat.rotateY(lightRotation, lightRotation, 85);
+    quat.rotateX(lightRotation, lightRotation, 1.578);
+    quat.rotateY(lightRotation, lightRotation, -0.9);
+    quat.rotateX(lightRotation, lightRotation, -0.6);
+    quat.rotateZ(lightRotation, lightRotation, -0.4);
+    //quat.rotateZ(lightRotation, lightRotation, -0.6);
+    
    
     //lightView = mat4.create();
     mat4.fromRotationTranslation( lightView, lightRotation, lightPosition ); 
 
-    mat4.ortho( lightPerspective, -60.0, 60.0, -60.0, 60.0, 20.0, 120.0 );
+    var orthoSize = 60;
+    mat4.ortho( lightPerspective, -orthoSize, orthoSize, -orthoSize, orthoSize, 40.0, 250.0 );
 
     mat4.multiply(lightVP, lightPerspective, lightView);
 
-    mat4.multiply(lightMVP, lightVP, mMatrix );
+    // mat4.multiply(lightMVP, lightVP, mMatrix );
 
-    composeMaterial.setMatrix("uLightSpace", lightMVP);
+    composeMaterial.setMatrix("uLightSpace", lightVP);
 }
 
 //
@@ -659,6 +685,12 @@ function renderShadows()
     
     voxelMaterials[voxelMaterialIndex].setMatrix("uPMatrix", lightPerspective);
     voxelMaterials[voxelMaterialIndex].setMatrix("uVMatrix", lightView );
+
+    floorMaterial.setMatrix("uPMatrix", lightPerspective);
+    floorMaterial.setMatrix("uVMatrix", lightView );
+
+
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
     gl.viewport( 0, 0, RT_TEX_SIZE, RT_TEX_SIZE);
 
@@ -688,11 +720,42 @@ function renderShadows()
 
     //blit( rtShadowTexture, null, RT_TEX_SIZE, RT_TEX_SIZE );
 
+    // floorMaterial.apply();
+
+    // gl.bindBuffer(gl.ARRAY_BUFFER, floorVertexBuffer);
+    // gl.vertexAttribPointer(floorMaterial.getVertexAttribute("aVertexPosition"), 3, gl.FLOAT, false, 0, 0);
+    // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, floorIndexBuffer);
+    // gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+
     voxelMaterials[voxelMaterialIndex].setMatrix("uVMatrix", vMatrix );
     voxelMaterials[voxelMaterialIndex].setMatrix("uPMatrix", perspectiveMatrix);
 
+    floorMaterial.setMatrix("uPMatrix", perspectiveMatrix);
+    floorMaterial.setMatrix("uVMatrix", vMatrix );
+
     gl.bindFramebuffer( gl.FRAMEBUFFER, null ); 
     gl.viewport(0, 0, canvas.width, canvas.height);
+}
+
+
+function debugShadowBuffer()
+{
+    gl.viewport(0, 0, 512, 512);
+    gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);  
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
+    
+    copyMaterial.setTexture("uCopyTex", rtShadowTexture );
+    gl.bindFramebuffer( gl.FRAMEBUFFER, null );
+    //gl.clear( gl.COLOR_BUFFER_BIT );
+  
+    copyMaterial.apply();
+    
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
+    
+    copyMaterial.setTexture("uCopyTex", rtCopyTexture );
+    //blit( rtShadowTexture, null, 512, 512);
 }
 
 //
@@ -702,8 +765,6 @@ function renderShadows()
 //
 function render( deltaTime ) 
 { 
-
-   
 
     gl.bindFramebuffer( gl.FRAMEBUFFER, rtScrPosBuffer );
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -733,6 +794,12 @@ function render( deltaTime )
     }
 
     
+    floorMaterial.apply();
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, floorVertexBuffer);
+    gl.vertexAttribPointer(floorMaterial.getVertexAttribute("aVertexPosition"), 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, floorIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 
     
 
@@ -758,23 +825,11 @@ function render( deltaTime )
     
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
 
+    debugShadowBuffer();
 
-//////////
-    gl.viewport(0, 0, 512, 512);
-    gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);  
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
-    
-    copyMaterial.setTexture("uCopyTex", rtShadowTexture );
-    gl.bindFramebuffer( gl.FRAMEBUFFER, null );
-    //gl.clear( gl.COLOR_BUFFER_BIT );
-  
-    copyMaterial.apply();
-    
-    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
-    
-    copyMaterial.setTexture("uCopyTex", rtCopyTexture );
-    //blit( rtShadowTexture, null, 512, 512);
+
+    //blit(rtScrPosTexture, null, canvas.width, canvas.height);
+
 }
 
 // 
@@ -806,13 +861,16 @@ function tick( currentTime )
     
     voxelMaterials[voxelMaterialIndex].setMatrix("uMMatrix", mMatrix );
     toolDataMaterial.setMatrix("uMMatrix", mMatrix );
+    composeMaterial.setMatrix("uCubeMat", mMatrix);
+  
 
     voxelMaterials[voxelMaterialIndex].setMatrix("uVMatrix", vMatrix );
     toolDataMaterial.setMatrix("uVMatrix", vMatrix );
+    floorMaterial.setMatrix("uVMatrix", vMatrix);
 
-    mat4.multiply(lightMVP, lightVP, mMatrix );
+    // mat4.multiply(lightMVP, lightVP, mMatrix );
 
-    composeMaterial.setMatrix("uLightSpace", lightMVP);
+    // composeMaterial.setMatrix("uLightSpace", lightMVP);
     
     render( deltaTime );
     
@@ -1320,6 +1378,16 @@ var quadVertexIndices = [
     0,  1,  2,      
     0,  2,  3
 ];
+
+
+var floorVertices = [
+    -128.0, -64.0, -128.0,
+    -128.0, -64.0, 128.0,
+    128.0, -64.0, 128.0,
+    128.0, -64.0, -128.0
+];
+
+var floorIndices = quadVertexIndices;
 
 var normalMatrix = [
     1, 0, 0, 0, 
