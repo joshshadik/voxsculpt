@@ -52,9 +52,13 @@ var currSculpting = false;
 
 var perspectiveMatrix = [];
 var vMatrix = [];
+var mMatrix = [];
 
+var cameraRotation =  [];
 var cameraPosition = [];
-var cameraRotation = [];
+
+var modelRotation = [];
+var modelPosition = [];
 
 var cameraForward = [];
 var cameraUp = [];
@@ -71,6 +75,7 @@ var lightRotation = [];
 var lightPerspective = [];
 var lightView = [];
 var lightVP = [];
+var lightMVP = [];
 
 
 // support for up to RT_TEX_SIZE * RT_TEX_SIZE number of voxels
@@ -473,11 +478,16 @@ function initMaterials()
     
     mat4.perspective(perspectiveMatrix, 45, canvas.width/canvas.height, 0.1, 1000.0);
     
-    cameraPosition = vec3.fromValues(0, 0, -100 );
     cameraRotation = quat.create();
+    cameraPosition = vec3.fromValues(0, 0, -100 );
     cameraUp = vec3.fromValues(0.0, 1.0, 0.0 );
+
+    modelRotation = quat.create();
+    modelPosition = vec3.fromValues(0.0, 0.0, 0.0);
+    
     
     mat4.fromRotationTranslation( vMatrix, cameraRotation, cameraPosition );
+    mat4.fromRotationTranslation( mMatrix, modelRotation, modelPosition );
     
 
     for( var i=0; i < voxelMaterials.length; i++ )
@@ -486,33 +496,35 @@ function initMaterials()
         voxelMaterials[i].addVertexAttribute("aVertexPosition");
         voxelMaterials[i].setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
         voxelMaterials[i].setMatrix("uVMatrix", new Float32Array( vMatrix ) );
+        voxelMaterials[i].setMatrix("mMMatrix", new Float32Array(mMatrix));
         voxelMaterials[i].setMatrix("uNormalMatrix", new Float32Array( normalMatrix ) );
         voxelMaterials[i].setFloat("cubeSize", SCULPT_SIZE);
         voxelMaterials[i].setFloat("layersPerRow", SCULPT_LAYERS);
         voxelMaterials[i].setFloat("imageSize", RT_TEX_SIZE);
     }
 
+    toolDataMaterial.setMatrix("uMMatrix", new Float32Array( mMatrix ) );
     toolDataMaterial.setMatrix("uVMatrix", new Float32Array( vMatrix ) );
     toolDataMaterial.setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
 
 
     lightPosition = vec3.fromValues( 0.0, 0.0, -85.0 );
     lightRotation = quat.create();
-    quat.rotateX(lightRotation, lightRotation, 90);
     
+    quat.rotateX(lightRotation, lightRotation, 60);
+    quat.rotateZ(lightRotation, lightRotation, 60);
+    quat.rotateY(lightRotation, lightRotation, 85);
+   
+    //lightView = mat4.create();
     mat4.fromRotationTranslation( lightView, lightRotation, lightPosition ); 
 
-    mat4.perspective( lightPerspective, 30, 1.0, 0.1, 100.0 );
+    mat4.ortho( lightPerspective, -60.0, 60.0, -60.0, 60.0, 20.0, 120.0 );
 
     mat4.multiply(lightVP, lightPerspective, lightView);
 
-    var invMat = []  
-    mat4.invert(invMat, lightView);
+    mat4.multiply(lightMVP, lightVP, mMatrix );
 
-    var lPos = [invMat[12], invMat[13], invMat[14]];
-    console.log("light pos: " + lPos);
-    composeMaterial.setVec3("uLightPos", lPos);
-    composeMaterial.setMatrix("uLightSpace", lightVP);
+    composeMaterial.setMatrix("uLightSpace", lightMVP);
 }
 
 //
@@ -789,10 +801,18 @@ function tick( currentTime )
     
     resize();
     
-    mat4.fromRotationTranslation( vMatrix, cameraRotation, cameraPosition );
+    mat4.fromRotationTranslation( vMatrix, cameraRotation, cameraPosition);
+    mat4.fromRotationTranslation( mMatrix, modelRotation, modelPosition );
     
+    voxelMaterials[voxelMaterialIndex].setMatrix("uMMatrix", mMatrix );
+    toolDataMaterial.setMatrix("uMMatrix", mMatrix );
+
     voxelMaterials[voxelMaterialIndex].setMatrix("uVMatrix", vMatrix );
     toolDataMaterial.setMatrix("uVMatrix", vMatrix );
+
+    mat4.multiply(lightMVP, lightVP, mMatrix );
+
+    composeMaterial.setMatrix("uLightSpace", lightMVP);
     
     render( deltaTime );
     
@@ -917,10 +937,10 @@ function handlePointerMove(event, newX, newY, sculpt, rotate, zoomAmount) {
         var horizontalRot = quat.create();
         quat.rotateY(horizontalRot, horizontalRot, ( deltaX / window.innerWidth ) * 30.0 );
         
-        quat.multiply( cameraRotation, horizontalRot, cameraRotation );
-        quat.multiply( cameraRotation, verticalRot, cameraRotation );
+        quat.multiply( modelRotation, horizontalRot, modelRotation );
+        quat.multiply( modelRotation, verticalRot, modelRotation );
         
-        vec3.transformQuat(cameraForward, vec3.fromValues(0.0, 0.0, -1.0 ), cameraRotation );
+        vec3.transformQuat(cameraForward, vec3.fromValues(0.0, 0.0, -1.0 ), modelRotation );
         vec3.normalize(cameraForward, cameraForward );
         vec3.cross( cameraRight, cameraForward, cameraUp );
         vec3.normalize(cameraRight, cameraRight );
@@ -1197,20 +1217,21 @@ function setupSculpt(nX, nY) {
     mouseCoord = vec4.fromValues( nX, nY, -1.0, 1.0);        
     var invMat = [];
     
-    var vpMat = [];
-
-    mat4.multiply(vpMat, perspectiveMatrix, vMatrix);
 
     mat4.invert(invMat, perspectiveMatrix );            
     mat4.multiply(sculptRay, invMat, mouseCoord );
     
 
-    mat4.invert( invMat, vMatrix );       
+    var mvMat = [];
+
+    mat4.multiply(mvMat, vMatrix, mMatrix );
+
+    mat4.invert( invMat, mvMat );       
     //sculptRay[3] = 0.0;       
     mat4.multiply(sculptRay, invMat, sculptRay);
     
 
-    mat4.invert( invMat, cameraRotation );        
+    mat4.invert( invMat, modelRotation );        
     var sculptPos = [];
 
     mat4.multiply( sculptPos, invMat, vec4.fromValues( -cameraPosition[0], -cameraPosition[1], -cameraPosition[2], 0.0 ) );

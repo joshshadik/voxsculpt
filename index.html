@@ -100,6 +100,30 @@
 
         varying highp vec2 vTextureCoord;
 
+         const highp float EPSILON = 0.004;
+
+        highp float calcShadowFactor( highp vec3 lightPos )
+        {
+            highp float factor = 0.0;
+
+            for( int x = -1; x <= 1; x++ )
+            {
+                for( int y = -1; y <= 1; y++ )
+                {
+                    highp vec4 shadowPos = texture2D(uShadowTex, lightPos.xy + vec2( x, y) * EPSILON );
+                    
+                    if( shadowPos.r < lightPos.z - 0.04  )
+                    {
+                        factor += 1.0;
+                    }
+                }
+            }
+
+            factor = factor / 9.0;
+
+            return factor;
+
+        }
 
         void main(void) 
         {
@@ -124,16 +148,11 @@
 
                 lightPos.xyz = lightPos.xyz * 0.5 + 0.5;
 
-                highp vec4 shadowPos = texture2D(uShadowTex, lightPos.xy);
-             
-                if( shadowPos.r < lightPos.z - 0.0001  )
-                {
-                    color.rgb *= 0.5; //1.0 - ( clamp(( lightPos.z - shadowPos.r )* 2000.0, 0.0, 1.0) * 0.5 ) ;
-                }
+                color.rgb *= 1.0 - calcShadowFactor(lightPos.xyz ) * 0.25;
 
             }
 
-            gl_FragColor = color;
+            gl_FragColor = color; //vec4( ( cubePos.xyz + vec3(cubeSize * 0.5 ) ) / 256.0, 1.0);
         }
 
     </script>
@@ -147,6 +166,7 @@
         uniform highp mat4 uMMatrix;
         uniform highp mat4 uVMatrix;
         uniform highp mat4 uPMatrix;
+
         uniform sampler2D uVoxTex;
 
         uniform highp float cubeSize; // 64.0
@@ -170,7 +190,7 @@
                         
             highp vec3 pos = offset + cubePos - vec3(cubeSize * 0.5 );
 
-            vPosition = cubePos;
+            vPosition = cubePos ;
             vUV = uv;
             
             if( col.a <= 0.5 )
@@ -179,7 +199,7 @@
             }
             else
             {
-                gl_Position = uPMatrix * uVMatrix * vec4(pos, 1.0);
+                gl_Position = uPMatrix * uVMatrix * uMMatrix * vec4(pos, 1.0);
             }
 
             highp vec3 objNormal = normalize(aVertexPosition - cubePos * 2.0);
@@ -194,6 +214,7 @@
         uniform sampler2D uVoxTex;
         uniform sampler2D uPosTex;
 
+        uniform highp mat4 uMMatrix;
         uniform highp mat4 uVMatrix;
         uniform highp mat4 uPMatrix;
 
@@ -244,7 +265,7 @@
             
             cubePos.xyz -= vec3(cubeSize*0.5);
 
-            highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
+            highp vec4 scrPos = uPMatrix * uVMatrix * uMMatrix * vec4(cubePos,1.0);
             scrPos.xy /= scrPos.w; 
             scrPos.xy = scrPos.xy * 0.5 + 0.5;
 
@@ -287,6 +308,7 @@
         uniform sampler2D uVoxTex;
         uniform sampler2D uPosTex;
 
+        uniform highp mat4 uMMatrix;
         uniform highp mat4 uVMatrix;
         uniform highp mat4 uPMatrix;
 
@@ -341,7 +363,7 @@
             
             cubePos.xyz -= vec3(cubeSize*0.5);
 
-            highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
+            highp vec4 scrPos = uPMatrix * uVMatrix * uMMatrix * vec4(cubePos,1.0);
             scrPos.xy /= scrPos.w; 
             scrPos.xy = scrPos.xy * 0.5 + 0.5;
 
@@ -646,9 +668,9 @@
             pos.xyz -= vec3(cubeSize*0.5);
            
             highp vec4 col;
-            col.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / (cubeSize*0.5) ;
+            col.rgb = vec3(0.1, 0.8, 0.1) * (( max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / (cubeSize*0.5) ) * 0.5 + 0.5 );
             col.a = 1.0;
-            gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0); //col;
+            gl_FragColor = vec4( 0.2, 0.9, 0.2, 1.0); //scol;
         }
     </script>
 </head>
