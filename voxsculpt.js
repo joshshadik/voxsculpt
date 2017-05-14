@@ -1000,8 +1000,8 @@ function handleTouchStart(event) {
     else if( touches.length == 2 )
     {
         rightclick = true;
-        lastMouseX = touches[1].clientX;
-        lastMouseY = touches[1].clientY;
+        lastMouseX = (touches[1].clientX + touches[0].clientX) / 2.0;
+        lastMouseY = (touches[1].clientY + touhces[0].clientY) / 2.0;
 
         lastTouchZoomX = touches[1].clientX - touches[0].clientX;
         lastTouchZoomY = touches[1].clientY - touches[0].clientY;
@@ -1033,8 +1033,8 @@ function handleTouchMove(event) {
     {
         leftDown = false;
         rightDown = true;
-        newX = touches[1].clientX;
-        newY = touches[1].clientY;
+        newX = (touches[1].clientX + touches[0].clientX) / 2.0;
+        newY = (touches[1].clientY + touhces[0].clientY) / 2.0;
     }
     else
     {
