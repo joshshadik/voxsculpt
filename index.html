@@ -5,9 +5,13 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 
     <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="dat.gui.min.js" type="text/javascript"></script>
     <script src="gl-matrix-min.js" type="text/javascript"></script>
+    
     <script src="material.js" type="text/javascript"></script>
     <script src="voxsculpt.js" type="text/javascript"></script>
+
+
 
     <!-- Fragment shader program -->
 
@@ -241,7 +245,7 @@
             cubePos.xyz -= vec3(cubeSize*0.5);
 
             highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
-            scrPos.xyz /= scrPos.w; 
+            scrPos.xy /= scrPos.w; 
             scrPos.xy = scrPos.xy * 0.5 + 0.5;
 
             scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
@@ -256,7 +260,7 @@
 
             cubePos.xyz = floor(cubePos.xyz);
 
-            //if( smplPos.a > 0.0 )
+            if( scrPos.z > -2.5 )
             {
                 highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
 
@@ -338,7 +342,7 @@
             cubePos.xyz -= vec3(cubeSize*0.5);
 
             highp vec4 scrPos = uPMatrix * uVMatrix * vec4(cubePos,1.0);
-            scrPos.xyz /= scrPos.w; 
+            scrPos.xy /= scrPos.w; 
             scrPos.xy = scrPos.xy * 0.5 + 0.5;
 
             scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
@@ -353,7 +357,7 @@
 
             cubePos.xyz = floor(cubePos.xyz);
 
-            //if( smplPos.a > 0.0 )
+            if( scrPos.z > -2.5 )
             {
                 highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
 
@@ -650,28 +654,63 @@
 </head>
 
 <body onload="start()" style="margin: 0px;touch-action: none;">
+
+
+
     <div class="container">
         <canvas id="glcanvas" width="1200" height="480" style="width:100%;height:100%;cursor:crosshair;">
             Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
         </canvas>
         <div id="overlay">                       
-            <div>Load Voxel Data from Image <input id="fileItem" type="file"></div>
-            <div> 
-                <form action="">
-                    <input type="radio" name="tool" value="subtract" onClick="setToolShader(0);"> Sculpt Subtract
-                    <input type="radio" name="tool" value="Paint" onClick="setToolShader(1);"> Paint
-                    <br />
-                    Brush Size
-                    <input id="brushSize" type="range" min="16" max="100" step="1" onchange="changeBrushSize()" />
-                    <br />
-                    Paint Color
-                    <input type="color" id="paintColorPicker" onchange="changePaintColor()" value="#ff0000" style="width:50%" >                    
-                    
-                </form>
-            </div>
+            <div style="display:none;">Load Voxel Data from Image <input id="fileItem" type="file"></div>
             </div>
                 
             </div>
+            <script type="text/javascript">
+                var obj = {
+
+                    tool: 'sculpt',
+                    brushSize: 0.04,
+                    paintColor: "#ffae23",
+                    loadData: function () {
+                        document.getElementById("fileItem").click();
+                    }
+
+                };
+
+                var gui = new dat.gui.GUI();
+
+                // Choose from accepted values
+                gui.add(obj, 'tool', [ 'sculpt', 'paint' ] ).onFinishChange(function(value){
+                    var toolIndex = 0;
+                    switch( value )
+                    {
+                        case "sculpt":
+                        toolIndex = 0;
+                        break;
+
+                        case "paint":
+                        toolIndex = 1;
+                        break;
+                    }
+
+                    setToolShader(toolIndex);
+                });
+
+                gui.add(obj, 'brushSize').min(0.01).max(0.1).step(0.001).onChange(function(value) {
+                    changeBrushSize(value);
+                });
+
+
+                //var f1 = gui.addFolder('Colors');
+                gui.addColor(obj, 'paintColor').onChange(function(value) {
+                  changePaintColor(value);
+                });
+
+                gui.add(obj, 'loadData');
+
+
+            </script>
         </div>
     </div>
 
@@ -702,7 +741,7 @@
 </style>
 
 <div id="overlayTutorial" onclick="tutorialOff()">
-    <div id="overlaytext">Left Click to Sculpt <br/> Right Click to Rotate</div>
+    <div id="overlaytext">Sculpt: Left Click <br/>Rotate: Right Click <br />Zoom: Alt + Right Click</div>
 </div>   
 
 </body>

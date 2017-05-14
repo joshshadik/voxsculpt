@@ -47,6 +47,9 @@ var rightDown = false;
 var lastMouseX = null;
 var lastMouseY = null;
 
+
+var currSculpting = false;
+
 var perspectiveMatrix = [];
 var vMatrix = [];
 
@@ -126,6 +129,7 @@ function start() {
         canvas.oncontextmenu = handleRightClick;
         document.onmouseup = handleMouseUp;
         document.onmousemove = handleMouseMove;
+        document.onmousewheel = handleMouseWheel;
         //document.ontouchstart = handleTouchStart;
         //document.ontouchmove = handleTouchMove;
         document.body.addEventListener('touchmove', function(event) {
@@ -140,6 +144,10 @@ function start() {
         
         // start the core loop cycle
         requestAnimationFrame(tick);     
+    }
+    else
+    {
+        alert("sorry, your browser/device does not support the webgl compabilities this application needs.")
     }
 }
 
@@ -240,6 +248,46 @@ function initBuffers()
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(batchedElements), gl.STATIC_DRAW);
 }
 
+function setupScreenBuffer()
+{
+    var texelData = gl.UNSIGNED_BYTE;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
+
+    rtScrPosBuffer.width = canvas.width;
+    rtScrPosBuffer.height = canvas.height;
+
+    rtScrPosTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, rtScrPosTexture );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtScrPosTexture, 0);
+
+    rtScrDepthTexture = gl.createTexture();
+    gl.bindTexture( gl.TEXTURE_2D, rtScrDepthTexture );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
+
+
+    if( toolDataMaterial )
+    {
+        toolDataMaterial.setTexture("uPosTex", rtScrPosTexture);
+
+        toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+    }
+
+    if( composeMaterial )
+    {
+        composeMaterial.setTexture("uPosTex", rtScrPosTexture);
+    }
+}
 
 //
 // initParticleData
@@ -289,29 +337,7 @@ function initParticleData()
 
 
     rtScrPosBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
-
-    rtScrPosBuffer.width = canvas.width;
-    rtScrPosBuffer.height = canvas.height;
-
-    rtScrPosTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, rtScrPosTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtScrPosTexture, 0);
-
-    rtScrDepthTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, rtScrDepthTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
-
+    setupScreenBuffer();
 
     rtShadowBuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
@@ -379,12 +405,12 @@ function initParticleData()
     toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
-    toolDataMaterial.setFloat("uRadius", 0.05 );
+    toolDataMaterial.setFloat("uRadius", 0.04 );
     toolDataMaterial.setFloat("cubeSize", SCULPT_SIZE);
     toolDataMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
     toolDataMaterial.setFloat("imageSize", RT_TEX_SIZE);
     toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
-    toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.0, 0.0]));
+    toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.68, 0.14]));
     
     
     
@@ -698,7 +724,7 @@ function render( deltaTime )
 
     
 
-    if( leftDown && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
+    if( currSculpting && (lastUpdateTime - lastActionTime) * 0.001 > 1.0 / brushSpeed)
     {
         renderParticleData( deltaTime );
         lastActionTime = lastUpdateTime;
@@ -850,6 +876,8 @@ function resize()
     
     // Set the viewport to match
     gl.viewport(0, 0, canvas.width,canvas.height);
+
+    setupScreenBuffer();
   }
 }
 
@@ -863,12 +891,25 @@ function cross(vecA, vecB ) {
     return vecC;
 }
 
-function handlePointerMove(event, newX, newY) {
+function handlePointerMove(event, newX, newY, sculpt, rotate, zoomAmount) {
     
-    if( rightDown )
+
+    var deltaX = newX - lastMouseX;
+    var deltaY = newY - lastMouseY;
+
+    if( zoomAmount == null )
     {
-        var deltaX = newX - lastMouseX;
-        var deltaY = newY - lastMouseY;
+        zoomAmount = deltaX + deltaY;
+    }
+
+
+    if( zoomAmount )
+    {
+        handleZoom(zoomAmount);
+    }
+    
+    if( rotate )
+    {
     
         var verticalRot = quat.create();
         quat.rotateX(verticalRot, verticalRot, ( deltaY / window.innerHeight ) * 30.0 );
@@ -887,25 +928,26 @@ function handlePointerMove(event, newX, newY) {
         vec3.normalize(cameraUp, cameraUp );
         //console.log("camera forward: " + cameraForward + "     right: " + cameraRight + "  up: " + cameraUp );
     }
+
     
-    if( leftDown)
+    if( sculpt)
     {
         var nX = ( newX / window.innerWidth) * 2.0 - 1.0;
         var nY = 1.0 - ( newY / window.innerHeight ) * 2.0;
         
         setupSculpt(nX, nY );
     }
+
+    currSculpting = sculpt;
     
 
     lastMouseX = newX;
     lastMouseY = newY;
 }
 
-function handlePointerStart(event, rightclick)
-{
-
-    
-    if( !rightclick )
+function handlePointerStart(event, sculpt, rotate, zoom)
+{    
+    if( sculpt )
     {
         var nX = ( (lastMouseX / window.innerWidth) ) * 2.0 - 1.0;
         var nY = 1.0 - ( lastMouseY / ( window.innerHeight ) ) * 2.0;
@@ -915,12 +957,12 @@ function handlePointerStart(event, rightclick)
         
         toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
         toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
-        leftDown = true;
+
+        handlePointerMove(event, lastMouseX, lastMouseY, true, false, 0);
+
+        currSculpting = true;
     }
-    else
-    {
-        rightDown = true;
-    }
+    
 }
 
 function handleMouseDown(event) {
@@ -931,14 +973,40 @@ function handleMouseDown(event) {
     var rightclick;
     if (event.which) rightclick = (event.which == 3);
     else if (event.button) rightclick = (event.button == 2);
+
+    if( rightclick )
+    {
+        rightDown = true;
+    }
+    else
+    {
+        leftDown = true;
+    }
     
-    handlePointerStart(event, rightclick);
+    var altKey = event.altKey == 1;
+    
+    var sculpting = (!rightclick && !altKey);
+    var rotating = (!rightclick && altKey) || ( rightclick && !altKey);
+    var zooming = (rightclick && altKey);
+    
+    
+    handlePointerStart(event, 
+        sculpting,
+        rotating,
+        zooming
+    );
 }
 
 function handleMouseUp(event) {
     var rightclick;
     if (event.which) rightclick = (event.which == 3);
     else if (event.button) rightclick = (event.button == 2);
+
+    var altKey = event.altKey == 1;
+    
+    var sculpting = (!rightclick && !altKey);
+    var rotating = (!rightclick && altKey) || ( rightclick && !altKey);
+    var zooming = (rightclick && altKey);
     
     if( !rightclick )
     {
@@ -948,13 +1016,52 @@ function handleMouseUp(event) {
     {
         rightDown = false;
     }
+
+    if( sculpting )
+    {
+        currSculpting = false;
+    }
 }
 
 function handleMouseMove(event) {
     if (!( leftDown || rightDown )) {
         return;
     }
-    handlePointerMove(event, event.clientX, event.clientY);
+
+    var altKey = event.altKey == 1;
+
+    var sculpting = (leftDown && !altKey);
+    var rotating = (leftDown && altKey) || ( rightDown && !altKey);
+    var zooming = (rightDown && altKey);
+
+    handlePointerMove(event, event.clientX, event.clientY, 
+    sculpting, 
+    rotating, 
+    zooming ? null : 0
+    );
+}
+
+function handleZoom(delta)
+{
+    var currentZ = cameraPosition[2];
+
+    currentZ += delta;
+
+    if( currentZ < -500 )
+    {
+        currentZ = -500;
+    }
+    else if ( currentZ > -10 )
+    {
+        currentZ = -10;
+    }
+
+    cameraPosition[2] = currentZ;
+}
+
+function handleMouseWheel(event) 
+{
+    handleZoom( event.wheelDelta / 120 );
 }
 
 function handleRightClick(event) {
@@ -979,14 +1086,22 @@ function handleTouchStart(event) {
     else if( touches.length == 2 )
     {
         rightclick = true;
-        lastMouseX = touches[1].clientX;
-        lastMouseY = touches[1].clientY;
+        lastMouseX = (touches[1].clientX + touches[0].clientX) / 2.0;
+        lastMouseY = (touches[1].clientY + touhces[0].clientY) / 2.0;
+
+        lastTouchZoomX = touches[0].clientX; //touches[1].clientX - touches[0].clientX;
+        lastTouchZoomY = touches[0].clientY; //touches[1].clientY - touches[0].clientY;
     }
 
 
-    handlePointerStart(event, rightclick);
+    handlePointerStart(event, 
+    touches.length == 1,
+    touches.length == 2,
+    touches.length == 2);
 }
 
+
+var lastTouchZoomX, lastTouchZoomY;
 
 function handleTouchMove(event) {
     touches = event.touches;
@@ -997,15 +1112,16 @@ function handleTouchMove(event) {
     {
         leftDown = true;
         rightDown = false;
-        newX = touches[0].clientX;
-        newY = touches[0].clientY;
+        newX = touches[0].clientX / 1.0;
+        newY = touches[0].clientY / 1.0;
+        console.log("newXY " + newX + ", " + newY );
     }
     else if ( touches.length == 2 )
     {
         leftDown = false;
         rightDown = true;
-        newX = touches[1].clientX;
-        newY = touches[1].clientY;
+        newX = touches[0].clientX; //(touches[1].clientX + touches[0].clientX) / 2.0;
+        newY = touches[0].clientY; //(touches[1].clientY + touhces[0].clientY) / 2.0;
     }
     else
     {
@@ -1013,9 +1129,31 @@ function handleTouchMove(event) {
         rightDown = false;
         newX = lastMouseX;
         newY = lastMouseY;
+
+        return;
     }
 
-    handlePointerMove(event, newX, newY);
+    var zoomDelta = 0;
+
+    if( touches.length == 2 )
+    {
+        var distX = touches[1].clientX - touches[0].clientX;
+        var distY = touches[1].clientY - touches[0].clientY;
+
+        var deltaX = distX - lastTouchZoomX;
+        var deltaY = distY - lastTouchZoomY;
+
+        zoomDelta = deltaX + deltaY;
+
+        lastTouchZoomX = distX;
+        lastTouchZoomY = distY;
+    }
+
+    handlePointerMove(event, newX, newY, 
+    touches.length == 1,
+    touches.length == 2,
+    zoomDelta
+    );
 
     return false;
 }
@@ -1027,20 +1165,20 @@ function setToolShader(index) {
     toolDataMaterial.setShader(toolShaders[index]);
 }
 
-function changeBrushSize() {
-    var brushSize = document.getElementById("brushSize").value;
+function changeBrushSize(brushSize) {
+    // var brushSize = document.getElementById("brushSize").value;
 
-    brushSize = parseInt(brushSize);
+    // brushSize = parseInt(brushSize);
 
-    brushSize = ( brushSize / 200.0 );
+    // brushSize = ( brushSize / 200.0 );
 
-    brushSize = ( brushSize * brushSize );
+    // brushSize = ( brushSize * brushSize );
 
     toolDataMaterial.setFloat("uRadius", brushSize);
 }
 
-function changePaintColor() {
-    var colorHex = document.getElementById("paintColorPicker").value;
+function changePaintColor(colorHex) {
+    //var colorHex = document.getElementById("paintColorPicker").value;
 
     colorHex = "0x" + colorHex.slice(1);
 
@@ -1068,7 +1206,7 @@ function setupSculpt(nX, nY) {
     
 
     mat4.invert( invMat, vMatrix );       
-    sculptRay[3] = 0.0;       
+    //sculptRay[3] = 0.0;       
     mat4.multiply(sculptRay, invMat, sculptRay);
     
 
