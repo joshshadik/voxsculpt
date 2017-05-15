@@ -810,10 +810,7 @@ function render( deltaTime )
     }
   
     renderShadows();
-
     
-
-
     gl.bindBuffer(gl.ARRAY_BUFFER, frameVerticesBuffer);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);  
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
@@ -825,7 +822,7 @@ function render( deltaTime )
     
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
 
-    debugShadowBuffer();
+    //debugShadowBuffer();
 
 
     //blit(rtScrPosTexture, null, canvas.width, canvas.height);
