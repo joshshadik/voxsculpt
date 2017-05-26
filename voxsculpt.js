@@ -17,17 +17,9 @@ var floorIndexBuffer;
 
 var floorMaterial;
 
-var rtVoxBuffer;
-var rtCopyBuffer;
-var rtScrPosBuffer;
-var rtShadowBuffer;
-
-var rtVoxTexture;
-var rtCopyTexture;
-var rtScrPosTexture;
-var rtScrDepthTexture;
-var rtShadowTexture;
-var rtShadowDepthTexture;
+var rtScrPosBuffer = null;
+var rtCopyBuffer = null;
+var rtShadowBuffer = null;
 
 var sculptDataProgram;
 var rtCopyProgram;
@@ -189,6 +181,7 @@ function initWebGL() {
 //
 function initBuffers() 
 {
+
     //maxium particles that can be represented in the textures
     var maxparticleCount = RT_TEX_SIZE * RT_TEX_SIZE;
     
@@ -259,40 +252,27 @@ function setupScreenBuffer()
 {
     var texelData = gl.UNSIGNED_BYTE;
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtScrPosBuffer);
-
-    rtScrPosBuffer.width = canvas.width;
-    rtScrPosBuffer.height = canvas.height;
-
-    rtScrPosTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, rtScrPosTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtScrPosTexture, 0);
-
-    rtScrDepthTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, rtScrDepthTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtScrPosBuffer.width, rtScrPosBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtScrDepthTexture, 0);
-
+    var colorTex = new Texture( canvas.width, canvas.height, gl.RGBA, gl.RGBA, texelData );
+    var depthTex = new Texture(canvas.width, canvas.height, gl.DEPTH_COMPONENT, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT);
+    
+    if( rtScrPosBuffer )
+    {
+        rtScrPosBuffer.setup( colorTex, depthTex, canvas.width, canvas.height );
+    }
+    else
+    {
+        rtScrPosBuffer = new Framebuffer( colorTex, depthTex, canvas.width, canvas.height );
+    }
 
     if( toolDataMaterial )
     {
-        toolDataMaterial.setTexture("uPosTex", rtScrPosTexture);
-
+        toolDataMaterial.setTexture("uPosTex", rtScrPosBuffer.color().native());
         toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
     }
 
     if( composeMaterial )
     {
-        composeMaterial.setTexture("uPosTex", rtScrPosTexture);
+        composeMaterial.setTexture("uPosTex", rtScrPosBuffer.color().native());
     }
 }
 
@@ -313,65 +293,30 @@ function initParticleData()
  
     
     // setup framebuffer to render voxel colors & visibility into texture : rgb = xyz, a = visibility
-    rtVoxBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtVoxBuffer);
-  
-    rtVoxBuffer.width = RT_TEX_SIZE;
-    rtVoxBuffer.height = RT_TEX_SIZE;
-  
-    rtVoxTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, rtVoxTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, RT_TEX_SIZE, RT_TEX_SIZE, 0, gl.RGBA, texelData, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtVoxTexture, 0);
+    rtVoxBuffer = new Framebuffer(
+        new Texture(RT_TEX_SIZE, RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData ), null,
+        RT_TEX_SIZE, RT_TEX_SIZE
+    );
   
   
 
     // setup framebuffer as intermediate - to copy content
-    rtCopyBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtCopyBuffer);
-  
-    rtCopyBuffer.width = RT_TEX_SIZE;
-    rtCopyBuffer.height = RT_TEX_SIZE;
-  
-    rtCopyTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, rtCopyTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, RT_TEX_SIZE, RT_TEX_SIZE, 0, gl.RGBA, texelData, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtCopyTexture, 0);
+    rtCopyBuffer = new Framebuffer(
+        new Texture(RT_TEX_SIZE, RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData ), null,
+        RT_TEX_SIZE, RT_TEX_SIZE
+    );
 
 
-    rtScrPosBuffer = gl.createFramebuffer();
+    //rtScrPosBuffer = gl.createFramebuffer();
     setupScreenBuffer();
 
-    rtShadowBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
-    
-    rtShadowBuffer.width = RT_TEX_SIZE * 2;
-    rtShadowBuffer.height = RT_TEX_SIZE * 2;
 
-    rtShadowTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, rtShadowTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, rtShadowBuffer.width, rtShadowBuffer.height, 0, gl.RGBA, texelData, null); // only need 8 bit precision since only 64x64x64 voxels
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtShadowTexture, 0);
-
-    rtShadowDepthTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, rtShadowDepthTexture );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, rtShadowBuffer.width, rtShadowBuffer.height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, rtShadowDepthTexture, 0);
-
-
-
+    rtShadowBuffer = new Framebuffer(
+        new Texture(RT_TEX_SIZE, RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData),
+        new Texture(RT_TEX_SIZE, RT_TEX_SIZE, gl.DEPTH_COMPONENT, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT),
+        RT_TEX_SIZE,
+        RT_TEX_SIZE
+    );
 
     // create buffers for rendering images on quads
     frameVerticesBuffer = gl.createBuffer();
@@ -421,8 +366,8 @@ function initParticleData()
     // material to update voxels
     toolDataMaterial = new Material(null, null);   
     toolDataMaterial.setShader(toolShaders[0]);
-    toolDataMaterial.setTexture("uVoxTex", rtVoxTexture );
-    toolDataMaterial.setTexture("uPosTex", rtScrPosTexture);
+    toolDataMaterial.setTexture("uVoxTex", rtVoxBuffer.color().native() );
+    toolDataMaterial.setTexture("uPosTex", rtScrPosBuffer.color().native());
     toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
     toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
     toolDataMaterial.addVertexAttribute("aVertexPosition");
@@ -437,7 +382,7 @@ function initParticleData()
     
     // material to copy 1 texture into another
     copyMaterial = new Material(quadVS, copyFS);   
-    copyMaterial.setTexture("uCopyTex", rtCopyTexture );
+    copyMaterial.setTexture("uCopyTex", rtCopyBuffer.color().native() );
     copyMaterial.addVertexAttribute("aVertexPosition");
     copyMaterial.setFloat("cubeSize", SCULPT_SIZE);
     copyMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
@@ -445,9 +390,9 @@ function initParticleData()
 
 
     composeMaterial = new Material(quadVS, composeFS);
-    composeMaterial.setTexture("uVoxTexture", rtVoxTexture);
-    composeMaterial.setTexture("uPosTex", rtScrPosTexture);
-    composeMaterial.setTexture("uShadowTex", rtShadowDepthTexture);
+    composeMaterial.setTexture("uVoxTexture", rtVoxBuffer.color().native());
+    composeMaterial.setTexture("uPosTex", rtScrPosBuffer.color().native());
+    composeMaterial.setTexture("uShadowTex", rtShadowBuffer.depth().native());
     composeMaterial.addVertexAttribute("aVertexPosition");
     composeMaterial.setFloat("cubeSize", SCULPT_SIZE);
     composeMaterial.setFloat("layersPerRow", SCULPT_LAYERS);
@@ -465,7 +410,7 @@ function initParticleData()
     gl.viewport(0, 0, RT_TEX_SIZE, RT_TEX_SIZE);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     
-    renderDataBuffer( rtVoxBuffer, initDataMaterial );
+    renderDataBuffer( rtVoxBuffer.fbo(), initDataMaterial );
     
     //renderDataBuffer( rtVoxBuffer, toolDataMaterial );
     
@@ -512,7 +457,7 @@ function initMaterials()
 
     for( var i=0; i < voxelMaterials.length; i++ )
     {
-        voxelMaterials[i].setTexture("uVoxTex", rtVoxTexture );
+        voxelMaterials[i].setTexture("uVoxTex", rtVoxBuffer.color().native() );
         voxelMaterials[i].addVertexAttribute("aVertexPosition");
         voxelMaterials[i].setMatrix("uPMatrix", new Float32Array( perspectiveMatrix ) );
         voxelMaterials[i].setMatrix("uVMatrix", new Float32Array( vMatrix ) );
@@ -599,7 +544,7 @@ function handleTextureLoaded(image, texture) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.bindTexture(gl.TEXTURE_2D, null);
   
-    blit(texture, rtVoxBuffer, RT_TEX_SIZE, RT_TEX_SIZE );
+    blit(texture, rtVoxBuffer.fbo(), RT_TEX_SIZE, RT_TEX_SIZE );
 }
 
 
@@ -619,7 +564,7 @@ function blit( texture, renderBuffer, viewWidth, viewHeight )
     
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
     
-    copyMaterial.setTexture("uCopyTex", rtCopyTexture );
+    copyMaterial.setTexture("uCopyTex", rtCopyBuffer.color().native() );
     
     gl.bindFramebuffer(gl.FRAMEBUFFER, null );
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -641,7 +586,7 @@ function renderDataBuffer( dataBuffer, dataMaterial )
     
     
     // render data into copy texture
-    gl.bindFramebuffer( gl.FRAMEBUFFER, rtCopyBuffer );
+    gl.bindFramebuffer( gl.FRAMEBUFFER, rtCopyBuffer.fbo() );
     gl.clear( gl.COLOR_BUFFER_BIT );
     
     dataMaterial.apply();
@@ -671,7 +616,7 @@ function renderParticleData(deltaTime)
     
     toolDataMaterial.setFloat("uDeltaTime", deltaTime );
 
-    renderDataBuffer( rtVoxBuffer, toolDataMaterial );
+    renderDataBuffer( rtVoxBuffer.fbo(), toolDataMaterial );
     
     //renderDataBuffer( null, toolDataMaterial );
   
@@ -691,8 +636,10 @@ function renderShadows()
 
 
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
-    gl.viewport( 0, 0, rtShadowBuffer.width, rtShadowBuffer.height);
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, rtShadowBuffer);
+    // gl.viewport( 0, 0, rtShadowBuffer.width, rtShadowBuffer.height);
+
+    rtShadowBuffer.bind();
 
     gl.clearColor( 0.0, 0.0, 0.0, 1.0);
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
@@ -746,7 +693,7 @@ function debugShadowBuffer()
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);  
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameIndexBuffer);
     
-    copyMaterial.setTexture("uCopyTex", rtShadowTexture );
+    copyMaterial.setTexture("uCopyTex", rtShadowBuffer.color().native() );
     gl.bindFramebuffer( gl.FRAMEBUFFER, null );
     //gl.clear( gl.COLOR_BUFFER_BIT );
   
@@ -754,7 +701,7 @@ function debugShadowBuffer()
     
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);    
     
-    copyMaterial.setTexture("uCopyTex", rtCopyTexture );
+    copyMaterial.setTexture("uCopyTex", rtCopyBuffer.color().native() );
     //blit( rtShadowTexture, null, 512, 512);
 }
 
@@ -766,8 +713,7 @@ function debugShadowBuffer()
 function render( deltaTime ) 
 { 
 
-    gl.bindFramebuffer( gl.FRAMEBUFFER, rtScrPosBuffer );
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    rtScrPosBuffer.bind();
 
     gl.clearColor( 1.0, 1.0, 1.0, 0.0 );
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -825,7 +771,7 @@ function render( deltaTime )
     //debugShadowBuffer();
 
 
-    //blit(rtScrPosTexture, null, canvas.width, canvas.height);
+    //blit(rtScrPosBuffer.color().native(), null, canvas.width, canvas.height);
 
 }
 
