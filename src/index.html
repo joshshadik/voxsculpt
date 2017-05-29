@@ -4,18 +4,19 @@
     <title>Voxsculpt</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 
-    <link rel="stylesheet" type="text/css" href="style.css">
-    <script src="dat.gui.min.js" type="text/javascript"></script>
-    <script src="gl-matrix-min.js" type="text/javascript"></script>
+    <link rel="stylesheet"          type="text/css" href="css/style.css">
+    <script src="thirdparty/dat.gui.min.js"    type="text/javascript"></script>
+    <script src="thirdparty/gl-matrix-min.js"  type="text/javascript"></script>
     
-    <script src="texture.js" type="text/javascript"></script>
-    <script src="framebuffer.js" type="text/javascript"></script>
-    <script src="material.js" type="text/javascript"></script>
-    <script src="voxsculpt.js" type="text/javascript"></script>
+    <script src="js/time.js"           type="text/javascript"></script>
+    <script src="js/texture.js"        type="text/javascript"></script>
+    <script src="js/mesh.js"           type="text/javascript"></script>
+    <script src="js/framebuffer.js"    type="text/javascript"></script>
+    <script src="js/material.js"       type="text/javascript"></script>
+    <script src="js/batched-cubes.js"  type="text/javascript"></script>
+    <script src="js/voxsculpt.js"      type="text/javascript"></script>
+    <script src="js/app.js"            type="text/javascript"></script>
 
-
-
-    <!-- Fragment shader program -->
 
     <script id="cubeframe-fs" type="x-shader/x-fragment">
         varying highp vec3 vObjNormal;
@@ -117,13 +118,14 @@
                     
                     if( shadowPos.r < lightPos.z - 0.02 )
                     {
-                        highp float off = min((lightPos.z - shadowPos.r) * 1.0, 1.0);
-                        off = off + 0.7;
-                        off *= off;
-                        highp float lDist = lightPos.z;
-                        lDist *= lDist;
-                        off *= min( (1.0 + lDist*10.0 ) , 2.0);
-                        factor += ( min( off, 1.0 ) * 0.7 ) + 0.3;
+                        // highp float off = min((lightPos.z - shadowPos.r) * 1.0, 1.0);
+                        // off = off + 0.7;
+                        // off *= off;
+                        // highp float lDist = lightPos.z;
+                        // lDist *= lDist;
+                        // off *= min( (1.0 + lDist*10.0 ) , 2.0);
+                        //factor += ( min( off, 1.0 ) * 0.7 ) + 0.3;
+                        factor += 1.0;
                     }
                 }
             }
@@ -468,222 +470,7 @@
         }
 
     </script>
-    
-    <script id="sculpt-fs" type="x-shader/x-fragment">
-        varying highp vec2 vTextureCoord;
-
-        uniform sampler2D uVoxTex;
-        uniform highp vec3 uSculptDir;
-        uniform highp vec3 uLastDir;
-        uniform highp vec3 uSculptPos;
-        uniform highp vec3 uLastPos;
-
-        uniform highp float uRadius;
-        uniform highp float uDeltaTime;
-
-        uniform highp float cubeSize; // 64.0
-        uniform highp float layersPerRow; // 8
-        uniform highp float imageSize; // 512
-        
-        highp float rand(highp vec2 co){
-            return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-        }
-        
-        highp vec3 closestPoint( highp vec3 a, highp vec3 b, highp vec3 p )
-        {
-            highp vec3 ap = p - a;
-            highp vec3 ab = b - a;
-            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
-            highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
-            highp float t = ap_ab / ab2;
-            
-            if( t < 0.0 ) t = 0.0;
-            else if ( t > 1.0 ) t = 1.0;
-            
-            return a + ab * t;
-        }
-
-        void main(void) {
-            highp vec4 vox = texture2D(uVoxTex, vTextureCoord.st);
-            
-            
-            // vec2( mod( cubePos.x, 64.0 ), mod( cubePos.z, 64.0 ) ) + vec2(mod(cubePos.y, 8.0), floor(cubePos.y / 8.0) ) * 64.0;
-            
-            highp float spacing = 1.0/layersPerRow;
-            
-            highp vec3 pos;        
-            pos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
-            pos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
-            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
-                                
-            pos.xy *= cubeSize;
-            
-            //vox.rgb = pos.xyz / 64.0;
-                        
-            pos.xyz -= vec3(cubeSize*0.5);
-           
-            //vox.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / 32.0 ;
-                        
-            
-            highp vec3 cubeOff = ( pos - uSculptPos );
-            highp vec3 cubeOffN = normalize( cubeOff );
-            
-            highp vec3 fixedDir = closestPoint( normalize( uLastDir ), normalize( uSculptDir ), cubeOffN );
-            
-            
-            highp vec3 sculptDir = normalize(fixedDir );
-            
-            highp float cosAng = dot( cubeOffN, sculptDir );
-            
-            highp float offLength = length( cubeOff );
-
-            if( cosAng >= 0.0 )
-            {
-                highp float dist = offLength * sin( acos( cosAng ) );
-                if( dist <= uRadius )
-                {
-                    for( int i=0; i < 3; i++ )
-                    {
-                        highp vec3 off;
-                        if( i == 0 )
-                        {
-                            if( sculptDir.x == 0.0 )
-                                continue;
-                            off = vec3( sign(sculptDir.x), 0.0, 0.0);
-                        }
-                        else if ( i == 1 )
-                        {
-                            if( sculptDir.y == 0.0 )
-                                continue;
-                            off = vec3( 0.0, sign(sculptDir.y), 0.0);                   
-                        }
-                        else if ( i == 2 )
-                        {
-                            if( sculptDir.z == 0.0 )
-                                continue;
-                            off = vec3( 0.0, 0.0, sign(sculptDir.z));                    
-                        }
-                        
-                        highp vec3 frontPos = pos - off;
-                        frontPos += vec3(cubeSize*0.5);
-                        
-                        highp vec2 uv = frontPos.xy + vec2(mod(frontPos.z, layersPerRow), floor(frontPos.z / layersPerRow) ) * cubeSize;
-                        
-                        uv = uv / imageSize;              
-                        
-                        bool outOfRange = frontPos.x < 0.0 || frontPos.x > cubeSize ||
-                                            frontPos.y < 0.0 || frontPos.y > cubeSize ||
-                                            frontPos.z < 0.0 || frontPos.z > cubeSize - 1.0;
-                        
-                        if(outOfRange ||  texture2D(uVoxTex, uv ).a <= 0.5 )
-                        {
-                            vox.a = 0.0;
-                        }
-                    }
-                }  
-            }                   
-
-            gl_FragColor = vox;
-        }
-    </script>   
-
-    
-    <script id="paint-fs" type="x-shader/x-fragment">
-        varying highp vec2 vTextureCoord;
-
-        uniform sampler2D uVoxTex;
-        uniform highp vec3 uSculptDir;
-        uniform highp vec3 uSculptPos;
-
-        uniform highp float uRadius;
-        uniform highp float uDeltaTime;
-
-        uniform highp float cubeSize; // 64.0
-        uniform highp float layersPerRow; // 8
-        uniform highp float imageSize; // 512
-        
-        highp float rand(highp vec2 co){
-            return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-        }
-
-        void main(void) {
-            highp vec4 vox = texture2D(uVoxTex, vTextureCoord.st);
-            
-            
-            // vec2( mod( cubePos.x, 64.0 ), mod( cubePos.z, 64.0 ) ) + vec2(mod(cubePos.y, 8.0), floor(cubePos.y / 8.0) ) * 64.0;
-            
-            highp float spacing = 1.0/layersPerRow;
-            
-            highp vec3 pos;        
-            pos.x = mod( vTextureCoord.x, spacing ) * layersPerRow;
-            pos.y = mod( vTextureCoord.y, spacing ) * layersPerRow;
-            pos.z = floor( vTextureCoord.x / spacing ) + floor( vTextureCoord.y / spacing ) * layersPerRow;   
-                                
-            pos.xy *= cubeSize;
-            
-            //vox.rgb = pos.xyz / 64.0;
-                        
-            pos.xyz -= vec3(cubeSize*0.5);
-           
-            //vox.rgb = vec3(0.1, 0.8, 0.1) * max( abs(pos.x), max( abs( pos.y ), abs(pos.z) ) ) / 32.0 ;
-                        
-            highp vec3 cubeOff = ( pos - uSculptPos );
-            
-            highp vec3 sculptDir = normalize(uSculptDir );
-            
-            highp float cosAng = dot( normalize( cubeOff ), sculptDir );
-            
-            highp float offLength = length( cubeOff );
-
-            if( cosAng >= 0.0 )
-            {
-                highp float dist = offLength * sin( acos( cosAng ) );
-                if( dist <= uRadius )
-                {
-                    for( int i=0; i < 3; i++ )
-                    {
-                        highp vec3 off;
-                        if( i == 0 )
-                        {
-                            if( sculptDir.x == 0.0 )
-                                continue;
-                            off = vec3( sign(sculptDir.x), 0.0, 0.0);
-                        }
-                        else if ( i == 1 )
-                        {
-                            if( sculptDir.y == 0.0 )
-                                continue;
-                            off = vec3( 0.0, sign(sculptDir.y), 0.0);                   
-                        }
-                        else if ( i == 2 )
-                        {
-                            if( sculptDir.z == 0.0 )
-                                continue;
-                            off = vec3( 0.0, 0.0, sign(sculptDir.z));                    
-                        }
-                        
-                        highp vec3 frontPos = pos - off;
-                        frontPos += vec3(cubeSize*0.5);
-                        
-                        highp vec2 uv = frontPos.xy + vec2(mod(frontPos.z, layersPerRow), floor(frontPos.z / layersPerRow) ) * cubeSize;
-                        
-                        uv = uv / imageSize;              
-                        
-                        bool outOfRange = frontPos.x < 0.0 || frontPos.x > cubeSize ||
-                                            frontPos.y < 0.0 || frontPos.y > cubeSize ||
-                                            frontPos.z < 0.0 || frontPos.z > cubeSize - 1.0;
-                        
-                        if(outOfRange ||  texture2D(uVoxTex, uv ).a <= 0.5 )
-                        {
-                            vox.rgb = vec3(1.0, 0.0, 0.0);
-                        }
-                    }
-                }  
-            }                   
-
-            gl_FragColor = vox;
-        }
-    </script>  
+      
 
     <script id="screenquad-vs" type="x-shader/x-vertex">
         attribute highp vec3 aVertexPosition;
@@ -744,8 +531,6 @@
 
 <body onload="start()" style="margin: 0px;touch-action: none;">
 
-
-
     <div class="container">
         <canvas id="glcanvas" width="1200" height="480" style="width:100%;height:100%;cursor:crosshair;">
             Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
@@ -783,17 +568,17 @@
                         break;
                     }
 
-                    setToolShader(toolIndex);
+                    _voxSculpt.setToolShader(toolIndex);
                 });
 
                 gui.add(obj, 'brushSize').min(0.01).max(0.1).step(0.001).onChange(function(value) {
-                    changeBrushSize(value);
+                    _voxSculpt.changeBrushSize(value);
                 });
 
 
                 //var f1 = gui.addFolder('Colors');
                 gui.addColor(obj, 'paintColor').onChange(function(value) {
-                  changePaintColor(value);
+                  _voxSculpt.changePaintColor(value);
                 });
 
                 gui.add(obj, 'loadData');
