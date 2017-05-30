@@ -209,7 +209,7 @@ class Voxsculpt {
     //
     initMaterials() 
     {
-        this._voxelMaterials.length = 1;
+        this._voxelMaterials.length = 2;
             
         
         var basicVS = Material.getShader(gl, "basic-vs" );  
@@ -220,6 +220,7 @@ class Voxsculpt {
         var floorFS = Material.getShader(gl, "floor-fs");
 
         this._voxelMaterials[0] = new Material( basicVS, positionFS );
+        this._voxelMaterials[1] = new Material( basicVS, wireframeFS );
         this._floorMaterial = new Material(floorVS, floorFS);
         
         mat4.perspective(this._pMatrix, 45, canvas.width/canvas.height, 0.1, 1000.0);
@@ -325,6 +326,7 @@ class Voxsculpt {
     }
 
     handleTextureLoaded(image, texture) {
+        console.log(image);
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -379,8 +381,10 @@ class Voxsculpt {
 
     renderShadows()
     { 
-        this._voxelMaterials[this._voxelMaterialIndex].setMatrix("uPMatrix", this._lightPerspective);
-        this._voxelMaterials[this._voxelMaterialIndex].setMatrix("uVMatrix", this._lightView );
+        var shadowMatIndex = this._voxelMaterialIndex;
+
+        this._voxelMaterials[shadowMatIndex].setMatrix("uPMatrix", this._lightPerspective);
+        this._voxelMaterials[shadowMatIndex].setMatrix("uVMatrix", this._lightView );
 
         this._floorMaterial.setMatrix("uPMatrix", this._lightPerspective);
         this._floorMaterial.setMatrix("uVMatrix", this._lightView );
@@ -390,11 +394,11 @@ class Voxsculpt {
         gl.clearColor( 0.0, 0.0, 0.0, 1.0);
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
-        this._voxelMaterials[this._voxelMaterialIndex].apply();
+        this._voxelMaterials[shadowMatIndex].apply();
         this._cubeBatch.render( );
 
-        this._voxelMaterials[this._voxelMaterialIndex].setMatrix("uVMatrix", this._vMatrix );
-        this._voxelMaterials[this._voxelMaterialIndex].setMatrix("uPMatrix", this._pMatrix);
+        this._voxelMaterials[shadowMatIndex].setMatrix("uVMatrix", this._vMatrix );
+        this._voxelMaterials[shadowMatIndex].setMatrix("uPMatrix", this._pMatrix);
 
         this._floorMaterial.setMatrix("uPMatrix", this._pMatrix);
         this._floorMaterial.setMatrix("uVMatrix", this._vMatrix );

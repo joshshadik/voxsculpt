@@ -149,20 +149,33 @@ function handleLoadImage( evt ) {
    var files = evt.target.files;
    var f = files[0];
    
+   var reader = new FileReader();
+
+   console.log("f type: " + f );
     // Only process image files.
-    if (!f.type.match('image.*')) {
-        return;
+    if (f.type.match('image.*')) {
+        reader.onload = (function(theFile) {
+            return function(e) {
+                loadVoxelTexture( e.target.result );
+            };
+        })(f);
+
+        reader.readAsDataURL(f);
     }
+    else if( f.name.endsWith('.vox')) {
+        reader.onload = (function(theFile) {
+            return function(e) {
+                var cubeTexture = gl.createTexture();
 
-    var reader = new FileReader();
+                _voxSculpt.handleTextureLoaded(importMagicaVoxel( e.target.result, "" ), cubeTexture );
+            };
+        })(f);
+
+        reader.readAsArrayBuffer(f);
+    }
     
-    reader.onload = (function(theFile) {
-        return function(e) {
-            loadVoxelTexture( e.target.result );
-        };
-    })(f);
 
-    reader.readAsDataURL(f);
+
 }
 
 function loadVoxelTexture(dataSource) {
