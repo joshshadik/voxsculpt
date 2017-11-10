@@ -49,7 +49,7 @@ function importMagicaVoxel(byteArray, glTex)
 
     var version = new Int32Array(byteArray.slice(4,8))[0];
 
-    console.log("mv version: " + version);
+    //console.log("mv version: " + version);
 
     var currOffset = 8;
     var mainChunk = loadChunk(byteArray, currOffset);
@@ -97,8 +97,8 @@ function importMagicaVoxel(byteArray, glTex)
         if( chunk.id == "RGBA")
         {
             pal = new Uint8Array(defaultPal.byteLength );
-            pal.set( byteArray.slice( chunk.dataOffset, chunk.dataOffset + 4 * 255), 4);
-            
+            var palArr = new Uint8Array(byteArray.slice( chunk.dataOffset, chunk.dataOffset + 4 * 255));
+            pal.set( palArr, 4);      
         }
     }
 
@@ -108,11 +108,16 @@ function importMagicaVoxel(byteArray, glTex)
     var layerSize = 8;
 
     pixelData = new Uint8ClampedArray(imageSize*imageSize*4);
-  
-    console.log(pal);
+
 
     for( var v = 0; v < allVoxels.length; ++v )
     {
+
+        if( allVoxels[v].x > cubeSize || allVoxels[v].z > cubeSize || allVoxels[v].y > cubeSize )
+        {
+            continue;
+        }
+        
         var uv = [0,0];
         uv[0] = (allVoxels[v].x % cubeSize) + ( allVoxels[v].y % layerSize ) * cubeSize;
         uv[1] = (allVoxels[v].z % cubeSize) + ( Math.floor(allVoxels[v].y / layerSize) ) * cubeSize;
@@ -138,8 +143,6 @@ function importMagicaVoxel(byteArray, glTex)
             pixelData[pi+2] = defaultPal[px*4+2];
             pixelData[pi+3] = defaultPal[px*4+3];
         }
-
-        //console.log("pal " + px + " : " + pal[px*4] + ", " + pal[px*4 + 1] + ", " + pal[px*4 +2] + ", " + pal[px*4 + 3]);
     }
 
     var img = new ImageData(pixelData, imageSize, imageSize);

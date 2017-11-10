@@ -151,7 +151,6 @@ function handleLoadImage( evt ) {
    
    var reader = new FileReader();
 
-   console.log("f type: " + f );
     // Only process image files.
     if (f.type.match('image.*')) {
         reader.onload = (function(theFile) {
@@ -162,7 +161,7 @@ function handleLoadImage( evt ) {
 
         reader.readAsDataURL(f);
     }
-    else if( f.name.endsWith('.vox')) {
+    else if( f.name.endsWith('.vox')) { // or magica voxel files ( not perfectly atm)
         reader.onload = (function(theFile) {
             return function(e) {
                 var cubeTexture = gl.createTexture();
@@ -173,9 +172,6 @@ function handleLoadImage( evt ) {
 
         reader.readAsArrayBuffer(f);
     }
-    
-
-
 }
 
 function loadVoxelTexture(dataSource) {
@@ -185,6 +181,14 @@ function loadVoxelTexture(dataSource) {
     cubeImage.src = dataSource;
 }
 
+
+function saveVoxelTexture() {
+    var pixels = _voxSculpt.getVoxTextureCPU();
+    var bmpEncoder = new BMPEnc(pixels, Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, true);
+    var blob = new Blob([bmpEncoder.encode()], {type: "image/bmp"});
+
+    saveAs(blob, "voxsculpt.bmp");
+}
 
 
 function resize() 
@@ -225,18 +229,19 @@ function handlePointerMove(event, newX, newY, sculpt, rotate, zoomAmount) {
     if( rotate )
     {
         _voxSculpt.handleRotate(( deltaX / window.innerWidth ), ( deltaY / window.innerHeight ));
-        //console.log("camera forward: " + cameraForward + "     right: " + cameraRight + "  up: " + cameraUp );
     }
 
-    
+    var nX = ( newX / window.innerWidth) * 2.0 - 1.0;
+    var nY = 1.0 - ( newY / window.innerHeight ) * 2.0;       
     if( sculpt)
     {
-        var nX = ( newX / window.innerWidth) * 2.0 - 1.0;
-        var nY = 1.0 - ( newY / window.innerHeight ) * 2.0;        
+         
         mouseCoord = vec4.fromValues( nX, nY, -1.0, 1.0);       
 
         _voxSculpt.handleToolUse(nX, nY );
     }
+
+    _voxSculpt.handleMouseMove(nX,nY);
 
     _voxSculpt.setToolUse(sculpt);
 
@@ -323,9 +328,7 @@ function handleMouseUp(event) {
 }
 
 function handleMouseMove(event) {
-    if (!( leftDown || rightDown )) {
-        return;
-    }
+
 
     var altKey = event.altKey == 1;
 
@@ -370,11 +373,9 @@ function handleTouchStart(event) {
         rightclick = true;
         lastMouseX = (touches[1].clientX + touches[0].clientX) / 2.0;
         lastMouseY = (touches[1].clientY + touhces[0].clientY) / 2.0;
-
-        lastTouchZoomX = touches[0].clientX; //touches[1].clientX - touches[0].clientX;
-        lastTouchZoomY = touches[0].clientY; //touches[1].clientY - touches[0].clientY;
     }
 
+    lastTouchDist = -1;
 
     handlePointerStart(event, 
     touches.length == 1,
@@ -382,8 +383,7 @@ function handleTouchStart(event) {
     touches.length == 2);
 }
 
-
-var lastTouchZoomX, lastTouchZoomY;
+var lastTouchDist = -1;
 
 function handleTouchMove(event) {
     touches = event.touches;
@@ -396,7 +396,6 @@ function handleTouchMove(event) {
         rightDown = false;
         newX = touches[0].clientX / 1.0;
         newY = touches[0].clientY / 1.0;
-        console.log("newXY " + newX + ", " + newY );
     }
     else if ( touches.length == 2 )
     {
@@ -422,13 +421,14 @@ function handleTouchMove(event) {
         var distX = touches[1].clientX - touches[0].clientX;
         var distY = touches[1].clientY - touches[0].clientY;
 
-        var deltaX = distX - lastTouchZoomX;
-        var deltaY = distY - lastTouchZoomY;
+        var touchDist = Math.sqrt(distX * distX + distY * distY);
 
-        zoomDelta = deltaX + deltaY;
+        if( lastTouchDist >= 0)
+        {
+            zoomDelta = touchDist - lastTouchDist;
+        }
 
-        lastTouchZoomX = distX;
-        lastTouchZoomY = distY;
+        lastTouchDist = touchDist;
     }
 
     handlePointerMove(event, newX, newY, 

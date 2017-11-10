@@ -74,6 +74,8 @@ class Voxsculpt {
         this._lightVP = [];
         this._lightMVP = [];
 
+        this._shadowsEnabled = true;
+
     }
 
     //
@@ -161,6 +163,7 @@ class Voxsculpt {
         this._toolDataMaterial.setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
         this._toolDataMaterial.setFloat("imageSize", Voxsculpt.RT_TEX_SIZE);
         this._toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+        this._toolDataMaterial.setFloat("uAspect", canvas.height / canvas.width);
         this._toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.68, 0.14]));
         
         
@@ -181,7 +184,8 @@ class Voxsculpt {
         this._composeMaterial.setFloat("cubeSize", Voxsculpt.SCULPT_SIZE);
         this._composeMaterial.setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
         this._composeMaterial.setFloat("imageSize", Voxsculpt.RT_TEX_SIZE);
-
+        this._composeMaterial.setFloat("uRadius", 0.04);
+        this._composeMaterial.setFloat("uAspect", canvas.height / canvas.width);
         
         // initialize data into vox texture
         var initPosFS = Material.getShader(gl, "initdata-fs");
@@ -244,7 +248,6 @@ class Voxsculpt {
             this._voxelMaterials[i].setMatrix("uPMatrix", new Float32Array( this._pMatrix ) );
             this._voxelMaterials[i].setMatrix("uVMatrix", new Float32Array( this._vMatrix ) );
             this._voxelMaterials[i].setMatrix("uMMatrix", new Float32Array(this._mMatrix));
-            this._voxelMaterials[i].setMatrix("uNormalMatrix", new Float32Array( normalMatrix ) );
             this._voxelMaterials[i].setFloat("cubeSize", Voxsculpt.SCULPT_SIZE);
             this._voxelMaterials[i].setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
             this._voxelMaterials[i].setFloat("imageSize", Voxsculpt.RT_TEX_SIZE);
@@ -300,11 +303,13 @@ class Voxsculpt {
         {
             this._toolDataMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
             this._toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+            this._toolDataMaterial.setFloat("uAspect", canvas.height / canvas.width);
         }
 
         if( this._composeMaterial )
         {
             this._composeMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
+            this._composeMaterial.setFloat("uAspect", canvas.height / canvas.width);
         }
     }
 
@@ -326,7 +331,6 @@ class Voxsculpt {
     }
 
     handleTextureLoaded(image, texture) {
-        console.log(image);
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -474,7 +478,10 @@ class Voxsculpt {
             this._lastActionTime = Time.lastFrameTime;
         }
     
-        this.renderShadows();
+        if( this._shadowsEnabled )
+        {
+            this.renderShadows();
+        }      
     
         gl.bindFramebuffer( gl.FRAMEBUFFER, null );
         gl.clear( gl.COLOR_BUFFER_BIT );
@@ -553,7 +560,14 @@ class Voxsculpt {
         
         this._toolDataMaterial.setVec3("uMousePos", [ nX * 0.5 + 0.5, nY * 0.5 + 0.5, -1.0]);
         this._toolDataMaterial.setVec3("uSculptPos", [sculptPos[0], sculptPos[1], sculptPos[2]]); 
-        this._toolDataMaterial.setVec3("uCamPos", [invMat[12], invMat[13], invMat[14]]);      
+        this._toolDataMaterial.setVec3("uCamPos", [invMat[12], invMat[13], invMat[14]]);  
+
+            
+    }
+
+    handleMouseMove(nX, nY)
+    {
+        this._composeMaterial.setVec3("uMousePos", [ nX * 0.5 + 0.5, nY * 0.5 + 0.5, -1.0]);
     }
 
     startToolUse(mouseCoord)
@@ -573,6 +587,7 @@ class Voxsculpt {
 
     changeBrushSize(brushSize) {
         this._toolDataMaterial.setFloat("uRadius", brushSize);
+        this._composeMaterial.setFloat("uRadius", brushSize);
     }
 
     changePaintColor(colorHex) {
@@ -587,6 +602,37 @@ class Voxsculpt {
 
         this._toolDataMaterial.setVec3("uToolColor", [r, g, b]);
     }
+
+    setVoxelMaterialIndex(materialIndex) {
+        this._voxelMaterialIndex = materialIndex;
+    }
+
+    getVoxTextureCPU() {
+        this.rtVoxBuffer.bind();
+        var pixels = new Uint8Array(Voxsculpt.RT_TEX_SIZE*Voxsculpt.RT_TEX_SIZE*4);
+
+        gl.readPixels(0, 0, Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+        Framebuffer.bindDefault();
+
+        return pixels;
+    }
+
+    enableShadows(enabled)
+    {
+        this._shadowsEnabled = enabled;
+
+        if(!this._shadowsEnabled )
+        {
+            this.rtShadowBuffer.bind();
+            
+            gl.clearColor( 0.0, 0.0, 0.0, 1.0);
+            gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+            Framebuffer.bindDefault();
+        }
+    }
+
 }
 
 var quadVertices = [
@@ -610,12 +656,4 @@ var floorVertices = [
 ];
 
 var floorIndices = quadVertexIndices;
-
-var normalMatrix = [
-    1, 0, 0, 0, 
-    0, 1, 0, 20, 
-    0, 0, 1, 100, 
-    0, 0, 0, 1
-];
-
 
