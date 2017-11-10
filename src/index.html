@@ -676,6 +676,11 @@
     </script>
 
  <style>
+        @font-face {
+            font-family: "Vera Mono";
+            src: url("fonts/VeraMono.ttf");
+        }
+
         #overlayTutorial {
             position: fixed; /* Sit on top of the page content */
             display: none; /* Hidden by default */
@@ -698,11 +703,12 @@
             color: white;
             transform: translate(-50%,-50%);
             -ms-transform: translate(-50%,-50%);
+            font-family: "Vera Mono";
         }
 </style>
 
 <div id="overlayTutorial" onclick="tutorialOff()">
-    <div id="overlaytext">Sculpt/Paint: Left Click <br/>Rotate: Right Click <br />Zoom: Alt + Right Click</div>
+    <div id="overlaytext">Sculpt/Paint: Left Mouse Button <br/><br/>Rotate: Right Mouse Button <br /><br/>Zoom: Alt + Right Mouse Button</div>
 </div>   
 
 </body>
