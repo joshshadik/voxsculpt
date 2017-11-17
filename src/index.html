@@ -86,19 +86,7 @@
         void main(void) {
             highp vec4 color;
             color.xyz = vPosition / 256.0;
-            //color.xyz -= 1.0;
             color.a = 1.0;
-
-            // bool onEdgeX = ( vObjNormal.x > 0.5 && vObjNormal.x < 0.9 ) || ( vObjNormal.x < -0.5 && vObjNormal.x > -0.9 );
-            // bool onEdgeY = ( vObjNormal.y > 0.5 && vObjNormal.y < 0.9 ) || ( vObjNormal.y < -0.5 && vObjNormal.y > -0.9 );
-            // bool onEdgeZ = ( vObjNormal.z > 0.5 && vObjNormal.z < 0.9 ) || ( vObjNormal.z < -0.5 && vObjNormal.z > -0.9 );
-            
-            // if(onEdgeX && onEdgeZ || onEdgeX && onEdgeY || onEdgeY && onEdgeZ )
-            // {
-            //     color.rgb = vec3(0.0);
-            //     color.a = 0.0;
-            // }
-            
 
             gl_FragColor = color;
         }
@@ -208,6 +196,12 @@
             {
                 color.rgb = vec3(1.0) - color.rgb;
             }
+
+
+            highp vec2 centerOffset = vec2(0.5) - vTextureCoord.xy;
+            highp float vignette = 1.0 - (dot(centerOffset, centerOffset));
+
+            color *= vignette;
 
             gl_FragColor = color; //vec4( ( cubePos.xyz + vec3(cubeSize * 0.5 ) ) / 256.0, 1.0);
         }
