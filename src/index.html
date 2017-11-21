@@ -334,7 +334,7 @@
         {
             highp vec2 ap = p - a;
             highp vec2 ab = b - a;
-            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
+            highp float ab2 = ab.x * ab.x + ab.y * ab.y + 0.0001;
             highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
             highp float t = ap_ab / ab2;
             
@@ -346,6 +346,8 @@
 
         void main(void) 
         {
+            highp vec4 vox = texture2D(uVoxTex, vTextureCoord);
+
             highp float spacing = 1.0/layersPerRow;
             
             highp vec3 cubePos;        
@@ -359,39 +361,55 @@
             
             cubePos.xyz -= vec3(cubeSize*0.5);
 
-            highp vec4 scrPos = uPMatrix * uVMatrix * uMMatrix * vec4(cubePos,1.0);
-            scrPos.xy /= scrPos.w; 
-            scrPos.xy = scrPos.xy * 0.5 + 0.5;
+            highp vec3 cp = cubePos;
 
-            scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
-            highp vec4 smplPos = texture2D(uPosTex, scrPos.xy);
-            smplPos = smplPos * 256.0;
+            highp float total = 3.0;
 
-            smplPos.xyz = floor(smplPos.xyz);
-            
-            highp vec4 vox = texture2D(uVoxTex, vTextureCoord);
-
-            cubePos.xyz += vec3(cubeSize*0.5);
-
-            cubePos.xyz = floor(cubePos.xyz);
-
-            if( scrPos.z > -2.5 )
+            for( highp int x = -1; x <= 1; x+=1 )
             {
-                highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
-
-                // highp float aspect = uCanvasSize.y / uCanvasSize.x;
-
-                if( abs( scrPos.x - linePoint.x) < uRadius * uAspect && abs(scrPos.y - linePoint.y ) < uRadius )
+                for( highp int y = -1; y <= 1; y+=1 )
                 {
-                    highp float offset = length( cubePos.xyz - uCamPos.xyz ) - length( smplPos.xyz - uSculptPos.xyz);
-
-                    if( offset <= 2.0 )
+                    for( highp int z = -1; z <= 1; z+=1 )
                     {
-                        vox.a = 0.0;
+                        cubePos = cp + vec3(x,y,z) * 0.5;
+                        highp vec4 scrPos = uPMatrix * uVMatrix * uMMatrix * vec4(cubePos,1.0);
+                        scrPos.xy /= scrPos.w; 
+                        scrPos.xy = scrPos.xy * 0.5 + 0.5;
+
+                        scrPos.xy  = floor((scrPos.xy * imageSize) ) / imageSize; 
+                        highp vec4 smplPos = texture2D(uPosTex, scrPos.xy);
+                        smplPos = smplPos * 256.0;
+
+                        smplPos.xyz = floor(smplPos.xyz);
+                    
+                        cubePos.xyz += vec3(cubeSize*0.5);
+
+                        cubePos.xyz = floor(cubePos.xyz);
+
+                        if( scrPos.z > -2.5 )
+                        {
+                            highp vec2 linePoint = closestPoint(uMousePos.xy, uLastPos.xy, scrPos.xy);
+
+
+                            if( abs( scrPos.x - linePoint.x) < uRadius * uAspect && abs(scrPos.y - linePoint.y ) < uRadius 
+                                && !(abs(scrPos.x - uLastPos.x)< uRadius * uAspect && abs(scrPos.y - uLastPos.y) < uRadius )
+                            )
+                            {
+                                highp float offset = length(cubePos.xyz - smplPos.xyz); // length( cubePos.xyz - uCamPos.xyz ) - length( smplPos.xyz - uSculptPos.xyz);
+                                
+                                if( offset <= 2.0 )
+                                {
+                                    total -= 1.0;
+                                }
+
+                            }
+
+                        }
                     }
                 }
-
             }
+
+            vox.a = vox.a * clamp(total, 0.0, 1.0);
 
             gl_FragColor = vox;
         }
@@ -433,7 +451,7 @@
         {
             highp vec2 ap = p - a;
             highp vec2 ab = b - a;
-            highp float ab2 = ab.x * ab.x + ab.y * ab.y;
+            highp float ab2 = ab.x * ab.x + ab.y * ab.y + 0.0001;
             highp float ap_ab = ap.x * ab.x + ap.y * ab.y;
             highp float t = ap_ab / ab2;
             
@@ -489,7 +507,6 @@
                         {
                             highp vec2 linePoint = closestPoint(uLastPos.xy, uMousePos.xy, scrPos.xy);
 
-                            // highp float aspect = uCanvasSize.y / uCanvasSize.x;
 
                             if( abs( scrPos.x - linePoint.x) < uRadius * uAspect && abs(scrPos.y - linePoint.y ) < uRadius )
                             {
