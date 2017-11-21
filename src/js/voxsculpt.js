@@ -472,7 +472,7 @@ class Voxsculpt {
         this._floorMaterial.apply();
         this._floorMesh.render();
 
-        if( this._currSculpting && (Time.lastFrameTime - this._lastActionTime) * 0.001 > 1.0 / this._brushSpeed)
+        if( this._currSculpting && (Time.lastFrameTime - this._lastActionTime) * 0.01 > 1.0 / this._brushSpeed)
         {
             this.renderParticleData( Time.deltaTime );
             this._lastActionTime = Time.lastFrameTime;
