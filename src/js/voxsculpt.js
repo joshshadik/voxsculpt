@@ -32,13 +32,17 @@ class Voxsculpt {
         this._floorMaterial;
 
         this._rtScrPosBuffer = null; // framebuffer for rendering world postion of voxels
-        this.rtCopyBuffer = null;   // framebuffer for copying framebuffer contents
-        this.rtShadowBuffer = null; // framebuffer to render shadows
-        this.rtVoxBuffer = null;
+        this._rtCopyBuffer = null;   // framebuffer for copying framebuffer contents
+        this._rtShadowBuffer = null; // framebuffer to render shadows
+        this._rtVoxBuffer = null;
+
+        this._rtEditBuffer = null;
+        this._rtPrevBuffer = null;
 
         // this.sculptDataProgram; // shader used for sculpting voxels
         // this.rtCopyProgram;     // shader just to copy texture
 
+        this._editMaterial;
         this._toolDataMaterial;  // material to update voxels ( sculpting, painting, etc.)
         this._copyMaterial;      // material to copy texture
         this._composeMaterial;   // material that composes position and data textures into what is seen on screen
@@ -102,13 +106,23 @@ class Voxsculpt {
         var texelData = gl.UNSIGNED_BYTE;
     
         // setup framebuffer to render voxel colors & visibility into texture : rgb = xyz, a = visibility
-        this.rtVoxBuffer = new Framebuffer(
+        this._rtVoxBuffer = new Framebuffer(
+            new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData ), null,
+            Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE
+        );
+
+        this._rtEditBuffer = new Framebuffer(
+            new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData ), null,
+            Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE
+        );
+
+        this._rtPrevBuffer = new Framebuffer(
             new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData ), null,
             Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE
         );
 
         // setup framebuffer as intermediate - to copy content
-        this.rtCopyBuffer = new Framebuffer(
+        this._rtCopyBuffer = new Framebuffer(
             new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData ), null,
             Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE
         );
@@ -116,7 +130,7 @@ class Voxsculpt {
         //this._rtScrPosBuffer = gl.createFramebuffer();
         this.setupScreenBuffer();
 
-        this.rtShadowBuffer = new Framebuffer(
+        this._rtShadowBuffer = new Framebuffer(
             new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData),
             new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.DEPTH_COMPONENT, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT),
             Voxsculpt.RT_TEX_SIZE,
@@ -132,10 +146,11 @@ class Voxsculpt {
         
         // setup data materials
         var quadVS = Material.getShader(gl, "screenquad-vs");
-        var sculptFS = Material.getShader(gl, "sculpt2-fs");
+        var sculptFS = Material.getShader(gl, "sculpt-fs");
         var copyFS = Material.getShader(gl, "copy-fs");       
-        var paintFS = Material.getShader(gl, "paint2-fs" );
+        var paintFS = Material.getShader(gl, "paint-fs" );
         var composeFS = Material.getShader(gl, "compose-fs");
+        var brushFS = Material.getShader(gl, "brush-fs");
         
         this._toolShaders.length = 2;
         
@@ -148,28 +163,33 @@ class Voxsculpt {
         gl.attachShader(this._toolShaders[1], quadVS );
         gl.attachShader(this._toolShaders[1], paintFS );
         gl.linkProgram(this._toolShaders[1]);
-        
+
+
+        this._editMaterial = new Material(quadVS, brushFS);
+        this._editMaterial.setTexture("uVoxTex", this._rtVoxBuffer.color().native() );
+        this._editMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
+        this._editMaterial.setTexture("uPrevTex", this._rtEditBuffer.color().native());
+        this._editMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
+        this._editMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
+        this._editMaterial.addVertexAttribute("aVertexPosition");
+        this._editMaterial.setFloat("uRadius", 0.04 );
+        this._editMaterial.setFloat("cubeSize", Voxsculpt.SCULPT_SIZE);
+        this._editMaterial.setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
+        this._editMaterial.setFloat("imageSize", Voxsculpt.RT_TEX_SIZE);
+        this._editMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+        this._editMaterial.setFloat("uAspect", canvas.height / canvas.width);   
         
         // material to update voxels
         this._toolDataMaterial = new Material(null, null);   
         this._toolDataMaterial.setShader(this._toolShaders[0]);
-        this._toolDataMaterial.setTexture("uVoxTex", this.rtVoxBuffer.color().native() );
-        this._toolDataMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
-        this._toolDataMaterial.setVec3("uSculptPos", new Float32Array([0.0, 0.0, 200.0]));
-        this._toolDataMaterial.setVec3("uSculptDir", new Float32Array([0.4, 0.2, -1.0 ]));
-        this._toolDataMaterial.addVertexAttribute("aVertexPosition");
-        this._toolDataMaterial.setFloat("uRadius", 0.04 );
-        this._toolDataMaterial.setFloat("cubeSize", Voxsculpt.SCULPT_SIZE);
-        this._toolDataMaterial.setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
-        this._toolDataMaterial.setFloat("imageSize", Voxsculpt.RT_TEX_SIZE);
-        this._toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
-        this._toolDataMaterial.setFloat("uAspect", canvas.height / canvas.width);
+        this._toolDataMaterial.setTexture("uVoxTex", this._rtVoxBuffer.color().native() );
+        this._toolDataMaterial.setTexture("uEditTex", this._rtEditBuffer.color().native());
         this._toolDataMaterial.setVec3("uToolColor", new Float32Array([1.0, 0.68, 0.14]));
         
         
         // material to copy 1 texture into another
         this._copyMaterial = new Material(quadVS, copyFS);   
-        this._copyMaterial.setTexture("uCopyTex", this.rtCopyBuffer.color().native() );
+        this._copyMaterial.setTexture("uCopyTex", this._rtCopyBuffer.color().native() );
         this._copyMaterial.addVertexAttribute("aVertexPosition");
         this._copyMaterial.setFloat("cubeSize", Voxsculpt.SCULPT_SIZE);
         this._copyMaterial.setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
@@ -177,9 +197,9 @@ class Voxsculpt {
 
 
         this._composeMaterial = new Material(quadVS, composeFS);
-        this._composeMaterial.setTexture("uVoxTexture", this.rtVoxBuffer.color().native());
+        this._composeMaterial.setTexture("uVoxTexture", this._rtVoxBuffer.color().native());
         this._composeMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
-        this._composeMaterial.setTexture("uShadowTex", this.rtShadowBuffer.depth().native());
+        this._composeMaterial.setTexture("uShadowTex", this._rtShadowBuffer.depth().native());
         this._composeMaterial.addVertexAttribute("aVertexPosition");
         this._composeMaterial.setFloat("cubeSize", Voxsculpt.SCULPT_SIZE);
         this._composeMaterial.setFloat("layersPerRow", Voxsculpt.SCULPT_LAYERS);
@@ -198,9 +218,9 @@ class Voxsculpt {
         gl.viewport(0, 0, Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE);
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         
-        this.renderDataBuffer( this.rtVoxBuffer.fbo(), initDataMaterial );
+        this.renderDataBuffer( this._rtVoxBuffer.fbo(), initDataMaterial );
         
-        //renderDataBuffer( this.rtVoxBuffer, this._toolDataMaterial );
+        //renderDataBuffer( this._rtVoxBuffer, this._toolDataMaterial );
         
         gl.bindFramebuffer( gl.FRAMEBUFFER, null ); 
         gl.viewport(0, 0, canvas.width, canvas.height);
@@ -243,7 +263,7 @@ class Voxsculpt {
 
         for( var i=0; i < this._voxelMaterials.length; i++ )
         {
-            this._voxelMaterials[i].setTexture("uVoxTex", this.rtVoxBuffer.color().native() );
+            this._voxelMaterials[i].setTexture("uVoxTex", this._rtVoxBuffer.color().native() );
             this._voxelMaterials[i].addVertexAttribute("aVertexPosition");
             this._voxelMaterials[i].setMatrix("uPMatrix", new Float32Array( this._pMatrix ) );
             this._voxelMaterials[i].setMatrix("uVMatrix", new Float32Array( this._vMatrix ) );
@@ -253,9 +273,9 @@ class Voxsculpt {
             this._voxelMaterials[i].setFloat("imageSize", Voxsculpt.RT_TEX_SIZE);
         }
 
-        this._toolDataMaterial.setMatrix("uMMatrix", new Float32Array( this._mMatrix ) );
-        this._toolDataMaterial.setMatrix("uVMatrix", new Float32Array( this._vMatrix ) );
-        this._toolDataMaterial.setMatrix("uPMatrix", new Float32Array( this._pMatrix ) );
+        this._editMaterial.setMatrix("uMMatrix", new Float32Array( this._mMatrix ) );
+        this._editMaterial.setMatrix("uVMatrix", new Float32Array( this._vMatrix ) );
+        this._editMaterial.setMatrix("uPMatrix", new Float32Array( this._pMatrix ) );
 
         this._floorMaterial.setMatrix("uVMatrix", new Float32Array( this._vMatrix ) );
         this._floorMaterial.setMatrix("uPMatrix", new Float32Array( this._pMatrix ) );
@@ -299,11 +319,11 @@ class Voxsculpt {
             this._rtScrPosBuffer = new Framebuffer( colorTex, depthTex, canvas.width, canvas.height );
         }
 
-        if( this._toolDataMaterial )
+        if( this._editMaterial )
         {
-            this._toolDataMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
-            this._toolDataMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
-            this._toolDataMaterial.setFloat("uAspect", canvas.height / canvas.width);
+            this._editMaterial.setTexture("uPosTex", this._rtScrPosBuffer.color().native());
+            this._editMaterial.setVec2("uCanvasSize", new Float32Array([canvas.width, canvas.height]));
+            this._editMaterial.setFloat("uAspect", canvas.height / canvas.width);
         }
 
         if( this._composeMaterial )
@@ -325,7 +345,7 @@ class Voxsculpt {
 
         this._screenQuadMesh.render();
         
-        this._copyMaterial.setTexture("uCopyTex", this.rtCopyBuffer.color().native() );
+        this._copyMaterial.setTexture("uCopyTex", this._rtCopyBuffer.color().native() );
         
         Framebuffer.bindDefault();
     }
@@ -339,7 +359,7 @@ class Voxsculpt {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.bindTexture(gl.TEXTURE_2D, null);
     
-        this.blit(texture, this.rtVoxBuffer.fbo(), Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE );
+        this.blit(texture, this._rtVoxBuffer.fbo(), Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE );
     }
 
     //
@@ -352,7 +372,22 @@ class Voxsculpt {
     renderDataBuffer( dataBuffer, dataMaterial )
     {    
         // render data into copy texture
-        gl.bindFramebuffer( gl.FRAMEBUFFER, this.rtCopyBuffer.fbo() );
+        gl.bindFramebuffer( gl.FRAMEBUFFER, this._rtCopyBuffer.fbo() );
+        gl.clear( gl.COLOR_BUFFER_BIT );
+        
+        this._editMaterial.apply();     
+        this._screenQuadMesh.render();  
+        
+        // render copy texture into data texture
+        gl.bindFramebuffer( gl.FRAMEBUFFER, this._rtEditBuffer.fbo() );
+        gl.clear( gl.COLOR_BUFFER_BIT );
+    
+        this._copyMaterial.apply(); 
+        this._screenQuadMesh.render(); 
+
+        
+        // render data into copy texture
+        gl.bindFramebuffer( gl.FRAMEBUFFER, this._rtCopyBuffer.fbo() );
         gl.clear( gl.COLOR_BUFFER_BIT );
         
         dataMaterial.apply();     
@@ -376,9 +411,9 @@ class Voxsculpt {
         gl.viewport(0, 0, Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE);
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
         
-        this._toolDataMaterial.setFloat("uDeltaTime", deltaTime );
+        this._editMaterial.setFloat("uDeltaTime", deltaTime );
 
-        this.renderDataBuffer( this.rtVoxBuffer.fbo(), this._toolDataMaterial );
+        this.renderDataBuffer( this._rtVoxBuffer.fbo(), this._toolDataMaterial );
         
         Framebuffer.bindDefault();
     }
@@ -393,7 +428,7 @@ class Voxsculpt {
         this._floorMaterial.setMatrix("uPMatrix", this._lightPerspective);
         this._floorMaterial.setMatrix("uVMatrix", this._lightView );
 
-        this.rtShadowBuffer.bind();
+        this._rtShadowBuffer.bind();
 
         gl.clearColor( 0.0, 0.0, 0.0, 1.0);
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
@@ -417,11 +452,11 @@ class Voxsculpt {
         gl.viewport(0, 0, 512, 512);
         //gl.clear( gl.COLOR_BUFFER_BIT );
     
-        this._copyMaterial.setTexture("uCopyTex", this.rtShadowBuffer.color().native() );
+        this._copyMaterial.setTexture("uCopyTex", this._rtShadowBuffer.color().native() );
         this._copyMaterial.apply();   
         this._screenQuadMesh.render();
         
-        this._copyMaterial.setTexture("uCopyTex", this.rtCopyBuffer.color().native() );
+        this._copyMaterial.setTexture("uCopyTex", this._rtCopyBuffer.color().native() );
         //blit( rtShadowTexture, null, 512, 512);
     }
 
@@ -440,11 +475,11 @@ class Voxsculpt {
         mat4.fromRotationTranslation( this._mMatrix, this._modelRotation, this._modelPosition );
         
         this._voxelMaterials[this._voxelMaterialIndex].setMatrix("uMMatrix", this._mMatrix );
-        this._toolDataMaterial.setMatrix("uMMatrix", this._mMatrix );
+        this._editMaterial.setMatrix("uMMatrix", this._mMatrix );
         this._composeMaterial.setMatrix("uCubeMat", this._mMatrix);
     
         this._voxelMaterials[this._voxelMaterialIndex].setMatrix("uVMatrix", this._vMatrix );
-        this._toolDataMaterial.setMatrix("uVMatrix", this._vMatrix );
+        this._editMaterial.setMatrix("uVMatrix", this._vMatrix );
         this._floorMaterial.setMatrix("uVMatrix", this._vMatrix);
 
         // mat4.multiply(this._lightMVP, this._lightVP, this._mMatrix );
@@ -455,7 +490,7 @@ class Voxsculpt {
     postUpdate()
     {
         //this._toolDataMaterial.setVec3("uLastDir", [sculptRay[0], sculptRay[1], sculptRay[2]]);
-        this._toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+        //this._editMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
     }
 
 
@@ -476,6 +511,10 @@ class Voxsculpt {
         {
             this.renderParticleData( Time.deltaTime );
             this._lastActionTime = Time.lastFrameTime;
+
+            this._editMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+
+            //this.setToolUse(false);
         }
     
         if( this._shadowsEnabled )
@@ -501,7 +540,7 @@ class Voxsculpt {
             this._voxelMaterials[i].setMatrix("uPMatrix", this._pMatrix );
         }
 
-        this._toolDataMaterial.setMatrix("uPMatrix", this._pMatrix );
+        this._editMaterial.setMatrix("uPMatrix", this._pMatrix );
         
         // Set the viewport to match
         gl.viewport(0, 0, canvas.width,canvas.height);
@@ -562,6 +601,8 @@ class Voxsculpt {
         this._toolDataMaterial.setVec3("uSculptPos", [sculptPos[0], sculptPos[1], sculptPos[2]]); 
         this._toolDataMaterial.setVec3("uCamPos", [invMat[12], invMat[13], invMat[14]]);  
 
+        this._editMaterial.setVec3("uMousePos", [ nX * 0.5 + 0.5, nY * 0.5 + 0.5, -1.0]);
+
             
     }
 
@@ -573,7 +614,9 @@ class Voxsculpt {
     startToolUse(mouseCoord)
     {
         this._lastActionTime = 0.0;
-        this._toolDataMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+        this._editMaterial.setVec3("uLastPos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+        this._editMaterial.setVec3("uMousePos", [mouseCoord[0] * 0.5 + 0.5, mouseCoord[1] * 0.5 + 0.5, mouseCoord[2]]);
+        //this.setToolUse(true);
     }
 
     setToolUse(inUse)
@@ -587,6 +630,7 @@ class Voxsculpt {
 
     changeBrushSize(brushSize) {
         this._toolDataMaterial.setFloat("uRadius", brushSize);
+        this._editMaterial.setFloat("uRadius", brushSize);
         this._composeMaterial.setFloat("uRadius", brushSize);
     }
 
@@ -608,7 +652,7 @@ class Voxsculpt {
     }
 
     getVoxTextureCPU() {
-        this.rtVoxBuffer.bind();
+        this._rtVoxBuffer.bind();
         var pixels = new Uint8Array(Voxsculpt.RT_TEX_SIZE*Voxsculpt.RT_TEX_SIZE*4);
 
         gl.readPixels(0, 0, Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -624,7 +668,7 @@ class Voxsculpt {
 
         if(!this._shadowsEnabled )
         {
-            this.rtShadowBuffer.bind();
+            this._rtShadowBuffer.bind();
             
             gl.clearColor( 0.0, 0.0, 0.0, 1.0);
             gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
