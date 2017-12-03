@@ -11,6 +11,8 @@ var mouseCoord = [];
 var _voxSculpt = null;
 var _time = null;
 
+var _started = false;
+var _firstUpdate = true;
 
 //
 // start
@@ -95,13 +97,19 @@ function tick( currentTime )
 {
     _time.update(currentTime);
     
-    resize();
-
-    _voxSculpt.update();
+    if( _started || _firstUpdate )
+    {
+        
+        resize();
     
-    render();
+        _voxSculpt.update();
+        
+        render();
+       
+        _voxSculpt.postUpdate();
 
-    _voxSculpt.postUpdate();
+        _firstUpdate = false;
+    }
 
     requestAnimationFrame( tick );
 }
@@ -143,6 +151,7 @@ function initUI()
 function tutorialOff()
 {
     document.getElementById("overlayTutorial").style.display = "none";
+    _started = true;
 }
 
 function handleLoadImage( evt ) {
