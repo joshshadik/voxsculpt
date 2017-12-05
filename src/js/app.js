@@ -13,6 +13,8 @@ var _time = null;
 
 var _started = false;
 var _firstUpdate = true;
+var _supportsWebGL2 = false;
+
 
 //
 // start
@@ -125,14 +127,28 @@ function initWebGL() {
     gl = null;
 
     try {
-        gl = canvas.getContext("experimental-webgl", { alpha: false });
+        gl = canvas.getContext("webgl2", { alpha: false });
 
         var extensions = gl.getSupportedExtensions();
         console.log(extensions);
 
-        gl.getExtension('WEBGL_depth_texture');
+        //gl.getExtension('WEBGL_depth_texture');
     }
     catch(e) {
+    }
+
+    if(gl)
+    {
+        _supportsWebGL2 = true;
+    }
+    else
+    {
+        gl = canvas.getContext("experimental-webgl", { alpha: false });
+        
+        var extensions = gl.getSupportedExtensions();
+        console.log(extensions);
+
+        gl.getExtension('WEBGL_depth_texture');
     }
 
     // If we don't have a GL context, give up now
