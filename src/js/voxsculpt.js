@@ -130,9 +130,11 @@ class Voxsculpt {
         //this._rtScrPosBuffer = gl.createFramebuffer();
         this.setupScreenBuffer();
 
+        var depthInternal = _supportsWebGL2 ? gl.DEPTH_COMPONENT24 : gl.DEPTH_COMPONENT;
+
         this._rtShadowBuffer = new Framebuffer(
             new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.RGBA, gl.RGBA, texelData),
-            new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, gl.DEPTH_COMPONENT, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT),
+            new Texture(Voxsculpt.RT_TEX_SIZE, Voxsculpt.RT_TEX_SIZE, depthInternal, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT),
             Voxsculpt.RT_TEX_SIZE,
             Voxsculpt.RT_TEX_SIZE
         );
@@ -306,9 +308,10 @@ class Voxsculpt {
     setupScreenBuffer()
     {
         var texelData = gl.UNSIGNED_BYTE;
+        var depthInternal = _supportsWebGL2 ? gl.DEPTH_COMPONENT24 : gl.DEPTH_COMPONENT;
 
         var colorTex = new Texture( canvas.width, canvas.height, gl.RGBA, gl.RGBA, texelData );
-        var depthTex = new Texture(canvas.width, canvas.height, gl.DEPTH_COMPONENT, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT);
+        var depthTex = new Texture(canvas.width, canvas.height, depthInternal, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT);
         
         if( this._rtScrPosBuffer )
         {
