@@ -219,8 +219,8 @@ function saveVoxelTexture() {
 function resize() 
 {
 
-  var displayWidth  = window.innerWidth;
-  var displayHeight = window.innerHeight;
+  var displayWidth  = Math.floor(window.innerWidth * window.devicePixelRatio);
+  var displayHeight = Math.floor(window.innerHeight * window.devicePixelRatio);
 
   // Check if the canvas is not the same size.
   if (canvas.width  != displayWidth ||
